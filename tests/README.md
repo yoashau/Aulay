@@ -22,10 +22,15 @@ Requirements: Python 3, Git, and a C++17 compiler (GCC or Clang for the portable
 | `run_windows_tests.cmd` | Windows, Release x64 build | Native deadlines, routing selection, settings persistence and generated recovery fault harness |
 | `run_debug_audio_test.cmd` | Windows, unified Release x64 build | Diagnostic snapshot formatting and collection |
 | `run_debug_monitor_test.cmd` | Windows, unified Release x64 build | Native journal, queue, rotation, retention and callback behavior |
+| `check_format.py` | Portable | clang-format compliance over the app sources (CI pins clang-format 19.1.5) |
 
 CI uses `windows-2022` and Visual Studio 2022 (17.x) for the project's `v143` toolset, including ARM/ARM64 cross-compilers.
 
-CI runs the portable suites, builds Release x64, runs the fault tests, then runs both native diagnostic suites. Pull requests and pushes to `master` run these checks; tags also build the other release architectures.
+CI runs the format check, the portable suites, builds Release x64, runs the fault tests, then runs both native diagnostic suites. Pull requests and pushes to `master` run these checks; tags also build the other release architectures.
+
+## Formatting
+
+`.clang-format` is authoritative: tabs at width 4, WebKit-style braces, `SortIncludes: Never` (include order is load-bearing in this single translation unit) and `ColumnLimit: 0` (no reflow; some guard tests match source text verbatim). CI runs `tests/check_format.py` with clang-format pinned to 19.1.5 and fails on drift, so formatting is not optional. Locally run `python3 tests/check_format.py` with any clang-format 19+ on PATH. From WSL, note that `clang-format.exe` cannot resolve the style file through `\\wsl.localhost` paths and silently falls back to defaults: format a Windows-side copy of the tree with native paths and copy the results back.
 
 Native scripts run in a VS x64 developer shell with C++20 support and restored NuGet packages. They use standard C++20 coroutines and the Windows SDK C++/WinRT headers from the developer shell's include path, for isolated native test compilation. Do not override them with the package-generated WinRT headers, which use experimental coroutines. CI builds one Aulay edition before running its native tests.
 
@@ -43,7 +48,7 @@ Portable source checks are not full application builds. Native fault tests do no
 
 ## 中文说明
 
-`python tests/run_tests.py` 是统一跨平台入口，包含项目整洁性检查和六组功能/源码测试。Windows CI 构建统一的 Aulay，并执行三个非交互原生测试脚本。
+`python tests/run_tests.py` 是统一跨平台入口，包含项目整洁性检查和六组功能/源码测试。Windows CI 构建统一的 Aulay，并执行三个非交互原生测试脚本。代码风格由 `.clang-format` 唯一约束，CI 通过 `tests/check_format.py`（固定 clang-format 19.1.5）强制执行。
 
 `--probe`、`--audio` 和 UI 夹具属于显式选择的本地集成检查。UI 测试必须使用独立源码及 EXE 目录，它会写入专用配置；测试夹具不得作为产品发布。源码约束检查、原生故障模拟与真实蓝牙播放验证是不同层次的测试。
 

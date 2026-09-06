@@ -16,6 +16,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+    - name: Format check
+      run: |
+        pip install clang-format==19.1.5
+        python3 tests/check_format.py
     - name: Project and portable regression tests
       run: python3 tests/run_tests.py
 

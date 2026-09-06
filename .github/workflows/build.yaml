@@ -108,7 +108,17 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v2
       with:
-        draft: true
+        name: Aulay ${{ github.ref_name }}
+        body: |
+          First release of Aulay.
+
+          - Receive audio from a paired Bluetooth phone or tablet on the PC over A2DP Sink
+          - Tray device list with Quick Connect, Disconnect and Force Connect (adapter reset)
+          - Automatic adapter-reset recovery and reconnect after unexpected disconnects
+          - No-sound diagnostic markers with audio-timeline snapshots and bounded background logging
+          - Single portable executable for x64, x86, ARM64 and ARM
+
+          Aulay 首个版本：通过 A2DP Sink 在电脑上播放配对蓝牙设备的音频，含快连/强制连接、无声诊断与自动恢复。
         fail_on_unmatched_files: true
         files: |
           x64/Release/Aulay64.exe

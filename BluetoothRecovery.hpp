@@ -4,7 +4,6 @@
 // bounded deadlines and the EnsureBluetoothReady entry point.
 #include "Aulay.h"
 
-
 winrt::Windows::Foundation::IAsyncAction SetBluetoothRecoveryStage(BluetoothRecoveryStage stage)
 {
 	co_await winrt::resume_foreground(g_uiDispatcher);
@@ -16,43 +15,43 @@ winrt::Windows::Foundation::IAsyncAction SetBluetoothRecoveryStage(BluetoothReco
 }
 
 winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Devices::Radios::RadioAccessStatus> SetRadioStateInBackground(
-    winrt::Windows::Devices::Radios::Radio radio,winrt::Windows::Devices::Radios::RadioState state)
+	winrt::Windows::Devices::Radios::Radio radio, winrt::Windows::Devices::Radios::RadioState state)
 {
-    auto cancellation=co_await winrt::get_cancellation_token();
-    co_await winrt::resume_background();
-    auto operation=radio.SetStateAsync(state);
-    cancellation.callback([operation]{CancelAsyncInBackground(operation);});
-    if(cancellation()) {
-        CancelAsyncInBackground(operation);
-        winrt::throw_hresult(HRESULT_FROM_WIN32(ERROR_CANCELLED));
-    }
-    co_return co_await operation;
+	auto cancellation = co_await winrt::get_cancellation_token();
+	co_await winrt::resume_background();
+	auto operation = radio.SetStateAsync(state);
+	cancellation.callback([operation] { CancelAsyncInBackground(operation); });
+	if (cancellation()) {
+		CancelAsyncInBackground(operation);
+		winrt::throw_hresult(HRESULT_FROM_WIN32(ERROR_CANCELLED));
+	}
+	co_return co_await operation;
 }
 
 winrt::Windows::Foundation::IAsyncAction StartConnectionInBackground(AudioPlaybackConnection connection)
 {
-    auto cancellation=co_await winrt::get_cancellation_token();
-    co_await winrt::resume_background();
-    auto operation=connection.StartAsync();
-    cancellation.callback([operation]{CancelAsyncInBackground(operation);});
-    if(cancellation()) {
-        CancelAsyncInBackground(operation);
-        winrt::throw_hresult(HRESULT_FROM_WIN32(ERROR_CANCELLED));
-    }
-    co_await operation;
+	auto cancellation = co_await winrt::get_cancellation_token();
+	co_await winrt::resume_background();
+	auto operation = connection.StartAsync();
+	cancellation.callback([operation] { CancelAsyncInBackground(operation); });
+	if (cancellation()) {
+		CancelAsyncInBackground(operation);
+		winrt::throw_hresult(HRESULT_FROM_WIN32(ERROR_CANCELLED));
+	}
+	co_await operation;
 }
 
 winrt::Windows::Foundation::IAsyncOperation<AudioPlaybackConnectionOpenResult> OpenConnectionInBackground(AudioPlaybackConnection connection)
 {
-    auto cancellation=co_await winrt::get_cancellation_token();
-    co_await winrt::resume_background();
-    auto operation=connection.OpenAsync();
-    cancellation.callback([operation]{CancelAsyncInBackground(operation);});
-    if(cancellation()) {
-        CancelAsyncInBackground(operation);
-        winrt::throw_hresult(HRESULT_FROM_WIN32(ERROR_CANCELLED));
-    }
-    co_return co_await operation;
+	auto cancellation = co_await winrt::get_cancellation_token();
+	co_await winrt::resume_background();
+	auto operation = connection.OpenAsync();
+	cancellation.callback([operation] { CancelAsyncInBackground(operation); });
+	if (cancellation()) {
+		CancelAsyncInBackground(operation);
+		winrt::throw_hresult(HRESULT_FROM_WIN32(ERROR_CANCELLED));
+	}
+	co_return co_await operation;
 }
 
 winrt::Windows::Foundation::IAsyncOperation<bool> WaitForRadioState(
@@ -72,13 +71,10 @@ winrt::Windows::Foundation::IAsyncOperation<bool> WaitForRadioState(
 	auto stateChanged = std::make_shared<wil::unique_event>(wil::EventOptions::ManualReset);
 	auto stateChangedRevoker = radio.StateChanged(winrt::auto_revoke,
 		[stateChanged, targetState](Radio const& sender, winrt::Windows::Foundation::IInspectable const&) noexcept {
-			try
-			{
+			try {
 				if (sender.State() == targetState)
 					stateChanged->SetEvent();
-			}
-			catch (...)
-			{
+			} catch (...) {
 				// A failed event callback must not escape into the WinRT event source.
 			}
 		});
@@ -89,7 +85,7 @@ winrt::Windows::Foundation::IAsyncOperation<bool> WaitForRadioState(
 
 	// Register an asynchronous kernel wait instead of occupying a worker thread.
 	auto signaled = co_await winrt::resume_on_signal(stateChanged->get(), timeout);
-	co_return signaled && radio.State() == targetState;
+	co_return signaled&& radio.State() == targetState;
 }
 
 winrt::Windows::Foundation::IAsyncOperation<int32_t> RunBluetoothRecoveryTransaction(
@@ -102,15 +98,13 @@ winrt::Windows::Foundation::IAsyncOperation<int32_t> RunBluetoothRecoveryTransac
 	bool offRequested = false;
 	BluetoothRecoveryResult primaryResult = BluetoothRecoveryResult::UnexpectedFailure;
 	RecordDiagnostic(L"bluetooth", L"transaction-start route=device-associated");
-	try
-	{
+	try {
 		CheckAsyncDeadline(primaryDeadline, cancellation);
 		co_await SetBluetoothRecoveryStage(BluetoothRecoveryStage::RequestingAccess);
 		RadioAccessStatus access = RadioAccessStatus::Unspecified;
 		if (g_app.radioAccess == RadioAccessStatus::Allowed)
 			access = *g_app.radioAccess;
-		else
-		{
+		else {
 			CheckAsyncDeadline(primaryDeadline, cancellation);
 			access = co_await AwaitBounded(Radio::RequestAccessAsync(), primaryDeadline, cancellation);
 			if (access == RadioAccessStatus::Allowed)
@@ -123,30 +117,22 @@ winrt::Windows::Foundation::IAsyncOperation<int32_t> RunBluetoothRecoveryTransac
 			primaryResult = BluetoothRecoveryResult::AccessDenied;
 		else if (!radio)
 			primaryResult = BluetoothRecoveryResult::RadioUnavailable;
-		else if (radio.State() == RadioState::Off)
-		{
+		else if (radio.State() == RadioState::Off) {
 			offConfirmed = true;
 			primaryResult = BluetoothRecoveryResult::NotRequired;
-		}
-		else
-		{
+		} else {
 			co_await SetBluetoothRecoveryStage(BluetoothRecoveryStage::TurningOff);
 			CheckAsyncDeadline(primaryDeadline, cancellation);
 			auto offStarted = std::chrono::steady_clock::now();
-			auto offDeadline = (std::min)(primaryDeadline, std::chrono::steady_clock::now() +
-				std::chrono::milliseconds(BLUETOOTH_OFF_TIMEOUT_MS));
+			auto offDeadline = (std::min)(primaryDeadline, std::chrono::steady_clock::now() + std::chrono::milliseconds(BLUETOOTH_OFF_TIMEOUT_MS));
 			offRequested = true;
 			NoteRadioTransitionStarted(BLUETOOTH_OFF_TIMEOUT_MS);
 			auto offStatus = co_await AwaitBounded(SetRadioStateInBackground(radio, RadioState::Off), offDeadline, cancellation);
-			RecordDiagnostic(L"bluetooth", L"turn-off-request status=" + std::wstring(RadioAccessStatusName(offStatus)) +
-				L" duration-ms=" + std::to_wstring(ElapsedMilliseconds(offStarted)));
-			if (offStatus != RadioAccessStatus::Allowed)
-			{
+			RecordDiagnostic(L"bluetooth", L"turn-off-request status=" + std::wstring(RadioAccessStatusName(offStatus)) + L" duration-ms=" + std::to_wstring(ElapsedMilliseconds(offStarted)));
+			if (offStatus != RadioAccessStatus::Allowed) {
 				g_app.radioAccess.reset();
 				primaryResult = BluetoothRecoveryResult::TurnOffDenied;
-			}
-			else
-			{
+			} else {
 				co_await SetBluetoothRecoveryStage(BluetoothRecoveryStage::WaitingForOff);
 				offConfirmed = co_await AwaitBounded(
 					WaitForRadioState(radio, RadioState::Off, std::chrono::milliseconds(BLUETOOTH_OFF_TIMEOUT_MS)),
@@ -155,43 +141,33 @@ winrt::Windows::Foundation::IAsyncOperation<int32_t> RunBluetoothRecoveryTransac
 				primaryResult = offConfirmed ? BluetoothRecoveryResult::NotRequired : BluetoothRecoveryResult::TurnOffTimedOut;
 			}
 		}
-	}
-	catch (...)
-	{
+	} catch (...) {
 		auto error = static_cast<HRESULT>(winrt::to_hresult());
 		RecordDiagnostic(L"bluetooth", L"primary-phase exception hr=" + FormatDiagnosticHresult(error));
-		primaryResult = error == HRESULT_FROM_WIN32(ERROR_TIMEOUT) ? BluetoothRecoveryResult::OperationTimedOut
+		primaryResult = error == HRESULT_FROM_WIN32(ERROR_TIMEOUT)               ? BluetoothRecoveryResult::OperationTimedOut
 			: (error == HRESULT_FROM_WIN32(ERROR_CANCELLED) || error == E_ABORT) ? BluetoothRecoveryResult::Cancelled
-			: BluetoothRecoveryResult::UnexpectedFailure;
+																				 : BluetoothRecoveryResult::UnexpectedFailure;
 	}
 
 	// Cleanup has an independent bounded budget and deliberately ignores the
 	// connection/shutdown cancellation. Once Off was sent, always compensate On.
 	bool onConfirmed = false;
 	BluetoothRecoveryResult onFailure = BluetoothRecoveryResult::TurnOnTimedOut;
-	if (radio && (offRequested || offConfirmed))
-	{
-		auto restoreDeadline = std::chrono::steady_clock::now() +
-			std::chrono::milliseconds(BLUETOOTH_RESTORE_TIMEOUT_MS);
-		try
-		{
+	if (radio && (offRequested || offConfirmed)) {
+		auto restoreDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(BLUETOOTH_RESTORE_TIMEOUT_MS);
+		try {
 			if (!offRequested && radio.State() == RadioState::On)
 				onConfirmed = true;
-			else
-			{
+			else {
 				co_await SetBluetoothRecoveryStage(BluetoothRecoveryStage::TurningOn);
 				auto onStarted = std::chrono::steady_clock::now();
 				NoteRadioTransitionStarted(BLUETOOTH_RESTORE_TIMEOUT_MS);
 				auto onStatus = co_await AwaitBounded(SetRadioStateInBackground(radio, RadioState::On), restoreDeadline);
-				RecordDiagnostic(L"bluetooth", L"turn-on-request status=" + std::wstring(RadioAccessStatusName(onStatus)) +
-					L" duration-ms=" + std::to_wstring(ElapsedMilliseconds(onStarted)));
-				if (onStatus != RadioAccessStatus::Allowed)
-				{
+				RecordDiagnostic(L"bluetooth", L"turn-on-request status=" + std::wstring(RadioAccessStatusName(onStatus)) + L" duration-ms=" + std::to_wstring(ElapsedMilliseconds(onStarted)));
+				if (onStatus != RadioAccessStatus::Allowed) {
 					g_app.radioAccess.reset();
 					onFailure = BluetoothRecoveryResult::TurnOnDenied;
-				}
-				else
-				{
+				} else {
 					co_await SetBluetoothRecoveryStage(BluetoothRecoveryStage::WaitingForOn);
 					onConfirmed = co_await AwaitBounded(
 						WaitForRadioState(radio, RadioState::On, std::chrono::milliseconds(BLUETOOTH_ON_TIMEOUT_MS)),
@@ -199,13 +175,12 @@ winrt::Windows::Foundation::IAsyncOperation<int32_t> RunBluetoothRecoveryTransac
 					RecordDiagnostic(L"bluetooth", L"turn-on-confirmed=" + std::wstring(onConfirmed ? L"true" : L"false"));
 				}
 			}
-		}
-		catch (...)
-		{
+		} catch (...) {
 			auto error = static_cast<HRESULT>(winrt::to_hresult());
 			RecordDiagnostic(L"bluetooth", L"turn-on exception hr=" + FormatDiagnosticHresult(error));
 			onFailure = error == HRESULT_FROM_WIN32(ERROR_TIMEOUT)
-				? BluetoothRecoveryResult::TurnOnTimedOut : BluetoothRecoveryResult::UnexpectedFailure;
+				? BluetoothRecoveryResult::TurnOnTimedOut
+				: BluetoothRecoveryResult::UnexpectedFailure;
 		}
 	}
 	NoteRadioTransitionSettled();
@@ -214,8 +189,7 @@ winrt::Windows::Foundation::IAsyncOperation<int32_t> RunBluetoothRecoveryTransac
 		result = BluetoothRecoveryResult::Success;
 	else if ((offRequested || offConfirmed) && !onConfirmed)
 		result = onFailure;
-	RecordDiagnostic(L"bluetooth", L"transaction-complete result=" + std::wstring(BluetoothRecoveryResultName(result)) +
-		L" duration-ms=" + std::to_wstring(ElapsedMilliseconds(transactionStarted)));
+	RecordDiagnostic(L"bluetooth", L"transaction-complete result=" + std::wstring(BluetoothRecoveryResultName(result)) + L" duration-ms=" + std::to_wstring(ElapsedMilliseconds(transactionStarted)));
 	co_return static_cast<int32_t>(result);
 }
 
@@ -229,19 +203,16 @@ winrt::Windows::Foundation::IAsyncOperation<int32_t> EnsureBluetoothReady(
 	if (forceRecovery)
 		g_app.bluetooth.needed = true;
 
-	if (HasConnectedSessions() && !allowActiveSessionReset)
-	{
+	if (HasConnectedSessions() && !allowActiveSessionReset) {
 		RecordDiagnostic(L"bluetooth", L"recovery deferred because an active audio session exists");
 		co_return static_cast<int32_t>(BluetoothRecoveryResult::NotRequired);
 	}
-	if (!g_app.bluetooth.needed)
-	{
+	if (!g_app.bluetooth.needed) {
 		RecordDiagnostic(L"bluetooth", L"recovery not required");
 		co_return static_cast<int32_t>(BluetoothRecoveryResult::NotRequired);
 	}
 
-	if (g_app.bluetooth.inProgress)
-	{
+	if (g_app.bluetooth.inProgress) {
 		auto completion = g_app.bluetooth.completion;
 		RecordDiagnostic(L"bluetooth", L"joining active recovery by completion event");
 		co_await winrt::resume_on_signal(completion->signal.get());
@@ -264,17 +235,14 @@ winrt::Windows::Foundation::IAsyncOperation<int32_t> EnsureBluetoothReady(
 	auto recoveryStarted = std::chrono::steady_clock::now();
 
 	BluetoothRecoveryResult result = BluetoothRecoveryResult::UnexpectedFailure;
-	try
-	{
-		deadline = (std::min)(deadline, std::chrono::steady_clock::now() +
-			std::chrono::milliseconds(BLUETOOTH_RECOVERY_TIMEOUT_MS));
+	try {
+		deadline = (std::min)(deadline, std::chrono::steady_clock::now() + std::chrono::milliseconds(BLUETOOTH_RECOVERY_TIMEOUT_MS));
 		co_await SetBluetoothRecoveryStage(BluetoothRecoveryStage::FindingRadio);
 		CheckAsyncDeadline(deadline, cancellation);
 		auto radio = co_await AwaitBounded(ResolveBluetoothRadio(deviceId, deadline, cancellation), deadline, cancellation);
 		co_await winrt::resume_foreground(dispatcher);
 		CheckAsyncDeadline(deadline, cancellation);
-		if (allowActiveSessionReset)
-		{
+		if (allowActiveSessionReset) {
 			// Revoke old sessions before requesting Off. Otherwise delayed Closed
 			// callbacks can arrive after recovery and trigger a second adapter reset.
 			std::vector<std::wstring> activeIds;
@@ -284,25 +252,24 @@ winrt::Windows::Foundation::IAsyncOperation<int32_t> EnsureBluetoothReady(
 			for (const auto& id : activeIds)
 				CloseConnectionSession(id, std::nullopt, false);
 		}
-        std::vector<std::shared_ptr<AudioFlow::State>> tasks;
-        for(auto const& item:g_audioFlowTasks)tasks.push_back(item.second);
-        for(auto const& task:tasks) {
-            co_await AwaitBounded(AudioFlow::WaitFinished(task),deadline,cancellation);
-            co_await winrt::resume_foreground(dispatcher);
-        }
+		std::vector<std::shared_ptr<AudioFlow::State>> tasks;
+		for (auto const& item : g_audioFlowTasks)
+			tasks.push_back(item.second);
+		for (auto const& task : tasks) {
+			co_await AwaitBounded(AudioFlow::WaitFinished(task), deadline, cancellation);
+			co_await winrt::resume_foreground(dispatcher);
+		}
 		RefreshEmptyState();
 		result = static_cast<BluetoothRecoveryResult>(co_await RunBluetoothRecoveryTransaction(radio, deadline, cancellation));
-	}
-	catch (...)
-	{
+	} catch (...) {
 		auto error = static_cast<HRESULT>(winrt::to_hresult());
 		RecordDiagnostic(L"bluetooth", L"recovery coroutine exception hr=" + FormatDiagnosticHresult(error));
 		LOG_CAUGHT_EXCEPTION();
-		result = error == HRESULT_FROM_WIN32(ERROR_TIMEOUT) ? BluetoothRecoveryResult::OperationTimedOut
+		result = error == HRESULT_FROM_WIN32(ERROR_TIMEOUT)                      ? BluetoothRecoveryResult::OperationTimedOut
 			: (error == HRESULT_FROM_WIN32(ERROR_CANCELLED) || error == E_ABORT) ? BluetoothRecoveryResult::Cancelled
-			: error == E_ACCESSDENIED ? BluetoothRecoveryResult::AccessDenied
-			: error == HRESULT_FROM_WIN32(ERROR_NOT_FOUND) ? BluetoothRecoveryResult::RadioUnavailable
-			: BluetoothRecoveryResult::UnexpectedFailure;
+			: error == E_ACCESSDENIED                                            ? BluetoothRecoveryResult::AccessDenied
+			: error == HRESULT_FROM_WIN32(ERROR_NOT_FOUND)                       ? BluetoothRecoveryResult::RadioUnavailable
+																				 : BluetoothRecoveryResult::UnexpectedFailure;
 	}
 
 	co_await winrt::resume_foreground(dispatcher);
@@ -319,13 +286,9 @@ winrt::Windows::Foundation::IAsyncOperation<int32_t> EnsureBluetoothReady(
 	completion->signal.SetEvent();
 	RecordDiagnostic(
 		L"bluetooth",
-		L"recovery-complete generation=" + std::to_wstring(g_app.bluetooth.generation) +
-		L" result=" + BluetoothRecoveryResultName(result) +
-		L" needed=" + (g_app.bluetooth.needed ? L"true" : L"false") +
-		L" duration-ms=" + std::to_wstring(ElapsedMilliseconds(recoveryStarted)));
+		L"recovery-complete generation=" + std::to_wstring(g_app.bluetooth.generation) + L" result=" + BluetoothRecoveryResultName(result) + L" needed=" + (g_app.bluetooth.needed ? L"true" : L"false") + L" duration-ms=" + std::to_wstring(ElapsedMilliseconds(recoveryStarted)));
 
-	if (!IsStopping())
-	{
+	if (!IsStopping()) {
 		g_app.reconciliationPending = true;
 		ScheduleDeviceReconciliation();
 		for (const auto& row : g_deviceRows)

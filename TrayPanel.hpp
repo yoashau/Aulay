@@ -4,7 +4,6 @@
 // dismissal hooks, the exit confirmation flyout and the context menu.
 #include "Aulay.h"
 
-
 Style CreateAcrylicFlyoutStyle(winrt::Windows::UI::Xaml::Interop::TypeName const& targetType)
 {
 	AcrylicBrush ab;
@@ -21,7 +20,7 @@ Style CreateAcrylicFlyoutStyle(winrt::Windows::UI::Xaml::Interop::TypeName const
 
 	Setter cr;
 	cr.Property(Control::CornerRadiusProperty());
-	cr.Value(winrt::box_value(CornerRadius{ 8, 8, 8, 8 }));
+	cr.Value(winrt::box_value(CornerRadius { 8, 8, 8, 8 }));
 	s.Setters().Append(cr);
 
 	return s;
@@ -31,14 +30,13 @@ std::optional<Point> GetNotifyIconPosition(HWND hWnd)
 {
 	RECT iconRect;
 	auto hr = Shell_NotifyIconGetRect(&g_niid, &iconRect);
-	if (FAILED(hr))
-	{
+	if (FAILED(hr)) {
 		LOG_HR(hr);
 		return std::nullopt;
 	}
 
 	auto dpi = GetDpiForWindow(hWnd);
-	return Point{
+	return Point {
 		static_cast<float>((iconRect.left + (iconRect.right - iconRect.left) / 2) * USER_DEFAULT_SCREEN_DPI / dpi),
 		static_cast<float>(iconRect.top * USER_DEFAULT_SCREEN_DPI / dpi) - 12.0f
 	};
@@ -51,21 +49,17 @@ void DismissDeviceFlyoutFromHook()
 
 LRESULT CALLBACK DeviceFlyoutMouseHook(int nCode, WPARAM wParam, LPARAM lParam)
 {
-	if (nCode >= 0 && g_app.deviceFlyoutVisible)
-	{
+	if (nCode >= 0 && g_app.deviceFlyoutVisible) {
 		UINT message = static_cast<UINT>(wParam);
 		if (message == WM_LBUTTONDOWN || message == WM_RBUTTONDOWN
 			|| message == WM_MBUTTONDOWN || message == WM_XBUTTONDOWN
-			|| message == WM_NCLBUTTONDOWN || message == WM_NCRBUTTONDOWN)
-		{
+			|| message == WM_NCLBUTTONDOWN || message == WM_NCRBUTTONDOWN) {
 			auto info = reinterpret_cast<MSLLHOOKSTRUCT*>(lParam);
 			// A click on our own tray icon is the shell's toggle gesture; it must
 			// not race a hook-initiated dismissal or the flyout reopens itself.
-			RECT iconRect{};
-			bool onTrayIcon = SUCCEEDED(Shell_NotifyIconGetRect(&g_niid, &iconRect)) &&
-				PtInRect(&iconRect, info->pt);
-			if (!onTrayIcon)
-			{
+			RECT iconRect {};
+			bool onTrayIcon = SUCCEEDED(Shell_NotifyIconGetRect(&g_niid, &iconRect)) && PtInRect(&iconRect, info->pt);
+			if (!onTrayIcon) {
 				HWND target = WindowFromPoint(info->pt);
 				DWORD processId = 0;
 				GetWindowThreadProcessId(target, &processId);
@@ -84,8 +78,7 @@ void CALLBACK DeviceFlyoutForegroundHook(HWINEVENTHOOK hook, DWORD event, HWND h
 	UNREFERENCED_PARAMETER(eventThread);
 	UNREFERENCED_PARAMETER(eventTime);
 	if (event == EVENT_SYSTEM_FOREGROUND && idObject == OBJID_WINDOW && idChild == 0
-		&& hwnd && g_app.deviceFlyoutVisible && !IsRadioDeactivationGraceActive())
-	{
+		&& hwnd && g_app.deviceFlyoutVisible && !IsRadioDeactivationGraceActive()) {
 		DWORD processId = 0;
 		GetWindowThreadProcessId(hwnd, &processId);
 		if (processId != GetCurrentProcessId())
@@ -110,14 +103,12 @@ void InstallDeviceFlyoutDismissHooks()
 
 void RemoveDeviceFlyoutDismissHooks()
 {
-	if (g_deviceFlyoutMouseHook)
-	{
+	if (g_deviceFlyoutMouseHook) {
 		if (!UnhookWindowsHookEx(g_deviceFlyoutMouseHook))
 			LOG_LAST_ERROR();
 		g_deviceFlyoutMouseHook = nullptr;
 	}
-	if (g_deviceFlyoutForegroundHook)
-	{
+	if (g_deviceFlyoutForegroundHook) {
 		if (!UnhookWinEvent(g_deviceFlyoutForegroundHook))
 			LOG_LAST_ERROR();
 		g_deviceFlyoutForegroundHook = nullptr;
@@ -130,8 +121,7 @@ void ShowDeviceFlyoutAtTray(HWND hWnd)
 		return;
 
 	auto point = GetNotifyIconPosition(hWnd);
-	if (!point)
-	{
+	if (!point) {
 		RecordDiagnostic(L"ui", L"device-flyout request failed: tray position unavailable");
 		return;
 	}
@@ -142,8 +132,7 @@ void ShowDeviceFlyoutAtTray(HWND hWnd)
 		ApplySessionStatusToRow(row.first);
 	RefreshEmptyState();
 
-	try
-	{
+	try {
 		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 1, 1, SWP_SHOWWINDOW);
 		SetForegroundWindow(hWnd);
 
@@ -153,16 +142,11 @@ void ShowDeviceFlyoutAtTray(HWND hWnd)
 		g_xamlDeviceFlyout.ShowAt(g_xamlCanvas, options);
 		RecordDiagnostic(
 			L"ui",
-			L"device-flyout request recovery=" +
-				std::wstring(IsBluetoothRecoveryActive() ? L"true" : L"false") +
-			L" visible=" + (g_app.deviceFlyoutVisible ? L"true" : L"false"));
-	}
-	catch (...)
-	{
+			L"device-flyout request recovery=" + std::wstring(IsBluetoothRecoveryActive() ? L"true" : L"false") + L" visible=" + (g_app.deviceFlyoutVisible ? L"true" : L"false"));
+	} catch (...) {
 		RecordDiagnostic(
 			L"ui",
-			L"device-flyout request exception hr=" +
-				FormatDiagnosticHresult(static_cast<HRESULT>(winrt::to_hresult())));
+			L"device-flyout request exception hr=" + FormatDiagnosticHresult(static_cast<HRESULT>(winrt::to_hresult())));
 		LOG_CAUGHT_EXCEPTION();
 	}
 }
@@ -172,12 +156,10 @@ void ToggleDeviceFlyoutAtTray(HWND hWnd)
 	if (IsStopping() || !g_xamlDeviceFlyout)
 		return;
 
-	if (g_app.deviceFlyoutVisible)
-	{
+	if (g_app.deviceFlyoutVisible) {
 		RecordDiagnostic(
 			L"ui",
-			L"device-flyout toggle-close recovery=" +
-				std::wstring(IsBluetoothRecoveryActive() ? L"true" : L"false"));
+			L"device-flyout toggle-close recovery=" + std::wstring(IsBluetoothRecoveryActive() ? L"true" : L"false"));
 		g_xamlDeviceFlyout.Hide();
 		return;
 	}
@@ -258,8 +240,7 @@ void SetupMenu()
 	logFolderItem.Text(_(L"Open Log Folder"));
 	logFolderItem.Icon(logFolderIcon);
 	logFolderItem.Click([](const auto&, const auto&) {
-		if (!OpenDiagnosticLogFolder())
-		{
+		if (!OpenDiagnosticLogFolder()) {
 			TaskDialog(
 				g_hWnd,
 				nullptr,
@@ -279,16 +260,14 @@ void SetupMenu()
 	exitItem.Text(_(L"Exit"));
 	exitItem.Icon(closeIcon);
 	exitItem.Click([](const auto&, const auto&) {
-		if (!HasConnectionActivity())
-		{
+		if (!HasConnectionActivity()) {
 			PostMessageW(g_hWnd, WM_CLOSE, 0, 0);
 			return;
 		}
 
 		RECT iconRect;
 		auto hr = Shell_NotifyIconGetRect(&g_niid, &iconRect);
-		if (FAILED(hr))
-		{
+		if (FAILED(hr)) {
 			LOG_HR(hr);
 			return;
 		}
@@ -301,7 +280,7 @@ void SetupMenu()
 		g_xamlCanvas.Width(iconWidthDip);
 		g_xamlCanvas.Height(iconHeightDip);
 
-		Point exitPoint{ iconWidthDip / 2.0f, -12.0f };
+		Point exitPoint { iconWidthDip / 2.0f, -12.0f };
 		winrt::Windows::UI::Xaml::Controls::Primitives::FlyoutShowOptions exitOptions;
 		exitOptions.Position(exitPoint);
 		exitOptions.Placement(winrt::Windows::UI::Xaml::Controls::Primitives::FlyoutPlacementMode::Top);
@@ -320,8 +299,7 @@ void SetupMenu()
 	menu.Opened([](const auto& sender, const auto&) {
 		auto menuItems = sender.as<MenuFlyout>().Items();
 		auto itemsCount = menuItems.Size();
-		if (itemsCount > 0)
-		{
+		if (itemsCount > 0) {
 			menuItems.GetAt(itemsCount - 1).Focus(g_menuFocusState);
 		}
 		g_menuFocusState = FocusState::Unfocused;
@@ -360,22 +338,20 @@ void SetupDeviceList()
 		InstallDeviceFlyoutDismissHooks();
 		RecordDiagnostic(
 			L"ui",
-			L"device-flyout opened recovery=" +
-				std::wstring(IsBluetoothRecoveryActive() ? L"true" : L"false"));
+			L"device-flyout opened recovery=" + std::wstring(IsBluetoothRecoveryActive() ? L"true" : L"false"));
 	});
 	g_xamlDeviceFlyout.Closed([](const auto&, const auto&) {
 		g_app.deviceFlyoutVisible = false;
 		RemoveDeviceFlyoutDismissHooks();
 		RecordDiagnostic(
 			L"ui",
-			L"device-flyout closed recovery=" +
-				std::wstring(IsBluetoothRecoveryActive() ? L"true" : L"false"));
+			L"device-flyout closed recovery=" + std::wstring(IsBluetoothRecoveryActive() ? L"true" : L"false"));
 		ShowWindow(g_hWnd, SW_HIDE);
 	});
 	Style deviceFlyoutStyle = CreateAcrylicFlyoutStyle(winrt::xaml_typename<FlyoutPresenter>());
 	Setter deviceFlyoutPadding;
 	deviceFlyoutPadding.Property(Control::PaddingProperty());
-	deviceFlyoutPadding.Value(winrt::box_value(Thickness{ 0, 0, 0, 0 }));
+	deviceFlyoutPadding.Value(winrt::box_value(Thickness { 0, 0, 0, 0 }));
 	deviceFlyoutStyle.Setters().Append(deviceFlyoutPadding);
 	g_xamlDeviceFlyout.FlyoutPresenterStyle(deviceFlyoutStyle);
 
@@ -399,14 +375,10 @@ void UpdateNotifyIcon()
 {
 	g_nid.hIcon = g_hTrayIcon;
 
-	if (!Shell_NotifyIconW(NIM_MODIFY, &g_nid))
-	{
-		if (Shell_NotifyIconW(NIM_ADD, &g_nid))
-		{
+	if (!Shell_NotifyIconW(NIM_MODIFY, &g_nid)) {
+		if (Shell_NotifyIconW(NIM_ADD, &g_nid)) {
 			FAIL_FAST_IF_WIN32_BOOL_FALSE(Shell_NotifyIconW(NIM_SETVERSION, &g_nid));
-		}
-		else
-		{
+		} else {
 			LOG_LAST_ERROR();
 		}
 	}

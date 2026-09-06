@@ -47,8 +47,7 @@ NOTIFYICONIDENTIFIER g_niid = {
 };
 UINT WM_TASKBAR_CREATED = 0;
 
-enum class ConnectionPhase
-{
+enum class ConnectionPhase {
 	RecoveringBluetooth,
 	Starting,
 	Opening,
@@ -57,8 +56,7 @@ enum class ConnectionPhase
 	Closing,
 };
 
-enum class BluetoothRecoveryStage
-{
+enum class BluetoothRecoveryStage {
 	Idle,
 	RequestingAccess,
 	FindingRadio,
@@ -70,8 +68,7 @@ enum class BluetoothRecoveryStage
 	Failed,
 };
 
-enum class BluetoothRecoveryResult
-{
+enum class BluetoothRecoveryResult {
 	NotRequired,
 	Success,
 	AccessDenied,
@@ -85,8 +82,7 @@ enum class BluetoothRecoveryResult
 	Cancelled,
 };
 
-enum class ConnectionAttemptResult
-{
+enum class ConnectionAttemptResult {
 	Cancelled,
 	Success,
 	BluetoothRecoveryFailed,
@@ -100,30 +96,27 @@ enum class ConnectionAttemptResult
 	DeadlineExceeded,
 };
 
-enum class ConnectionRequestMode
-{
+enum class ConnectionRequestMode {
 	Automatic,
 	Quick,
 	Forced,
 };
 
-enum class ConnectionRecoveryStrategy
-{
+enum class ConnectionRecoveryStrategy {
 	Direct,
 	RestartBluetooth,
 };
 
-struct ConnectionSession
-{
+struct ConnectionSession {
 	std::shared_ptr<AudioFlow::State> audioFlow;
-	DeviceInformation device{ nullptr };
-	AudioPlaybackConnection connection{ nullptr };
-	winrt::event_token stateChangedToken{};
+	DeviceInformation device { nullptr };
+	AudioPlaybackConnection connection { nullptr };
+	winrt::event_token stateChangedToken {};
 	uint64_t generation = 0;
 	uint64_t attemptId = 0;
 	uint32_t retryCount = 0;
 	ConnectionPhase phase = ConnectionPhase::RecoveringBluetooth;
-	std::chrono::steady_clock::time_point connectedAt{};
+	std::chrono::steady_clock::time_point connectedAt {};
 	bool hasStateChangedToken = false;
 	std::shared_ptr<wil::unique_event> openedSignal;
 	std::shared_ptr<AsyncCancellation> cancellation;
@@ -131,26 +124,23 @@ struct ConnectionSession
 	uint32_t noSoundReports = 0;
 };
 
-struct ConnectionRequest
-{
+struct ConnectionRequest {
 	std::wstring deviceId;
-	DeviceInformation device{ nullptr };
+	DeviceInformation device { nullptr };
 	uint64_t generation = 0;
 	uint64_t attemptId = 0;
 	uint32_t retryCount = 0;
 	ConnectionRequestMode mode = ConnectionRequestMode::Automatic;
 	ConnectionRecoveryStrategy recoveryStrategy = ConnectionRecoveryStrategy::Direct;
-	std::chrono::steady_clock::time_point notBefore{};
+	std::chrono::steady_clock::time_point notBefore {};
 };
 
-struct DeviceErrorState
-{
+struct DeviceErrorState {
 	std::wstring message;
 	uint64_t attemptId = 0;
 };
 
-struct DiagnosticState
-{
+struct DiagnosticState {
 	std::mutex mutex;
 	std::deque<std::wstring> recentEntries;
 	fs::path logDirectory;
@@ -159,14 +149,12 @@ struct DiagnosticState
 	bool initialized = false;
 };
 
-struct BluetoothRecoveryCompletion
-{
-	wil::unique_event signal{ wil::EventOptions::ManualReset };
+struct BluetoothRecoveryCompletion {
+	wil::unique_event signal { wil::EventOptions::ManualReset };
 	BluetoothRecoveryResult result = BluetoothRecoveryResult::UnexpectedFailure;
 };
 
-struct BluetoothRecoveryState
-{
+struct BluetoothRecoveryState {
 	// A pending explicit or unexpected-disconnect reset, never a startup reset.
 	bool needed = true;
 	bool inProgress = false;
@@ -181,10 +169,9 @@ struct BluetoothRecoveryState
 	std::shared_ptr<AsyncCancellation> cancellation;
 };
 
-struct AppRuntimeState
-{
-	std::atomic_bool shutdownRequested{ false };
-	std::atomic_bool shuttingDown{ false };
+struct AppRuntimeState {
+	std::atomic_bool shutdownRequested { false };
+	std::atomic_bool shuttingDown { false };
 	bool reconnectEnabled = false;
 	bool connectionWorkerRunning = false;
 	bool watcherHandlersAttached = false;
@@ -201,19 +188,19 @@ struct AppRuntimeState
 	std::unordered_map<std::wstring, uint64_t> connectGenerations;
 	std::unordered_map<std::wstring, DeviceErrorState> deviceErrors;
 	std::deque<ConnectionRequest> connectionQueue;
-	wil::unique_event connectionQueueChanged{ wil::EventOptions::ManualReset };
-	wil::unique_event deviceChanged{ wil::EventOptions::ManualReset };
-	wil::unique_event activityChanged{ wil::EventOptions::ManualReset };
-	wil::unique_event stoppingSignal{ wil::EventOptions::ManualReset };
+	wil::unique_event connectionQueueChanged { wil::EventOptions::ManualReset };
+	wil::unique_event deviceChanged { wil::EventOptions::ManualReset };
+	wil::unique_event activityChanged { wil::EventOptions::ManualReset };
+	wil::unique_event stoppingSignal { wil::EventOptions::ManualReset };
 	std::vector<std::wstring> desiredDevices;
 	std::unordered_set<std::wstring> pendingAutoReconnects;
 	bool unexpectedDisconnectRecoveryPending = false;
 	bool deviceFlyoutVisible = false;
-	winrt::event_token watcherAddedToken{};
-	winrt::event_token watcherRemovedToken{};
-	winrt::event_token watcherUpdatedToken{};
-	winrt::event_token watcherEnumerationCompletedToken{};
-	winrt::event_token watcherStoppedToken{};
+	winrt::event_token watcherAddedToken {};
+	winrt::event_token watcherRemovedToken {};
+	winrt::event_token watcherUpdatedToken {};
+	winrt::event_token watcherEnumerationCompletedToken {};
+	winrt::event_token watcherStoppedToken {};
 	DiagnosticState diagnostic;
 };
 

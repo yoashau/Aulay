@@ -4,8 +4,7 @@
 std::unordered_map<uint32_t, const wchar_t*> hashToStrMap;
 
 #pragma pack(push, 1)
-struct YMOData
-{
+struct YMOData {
 	uint16_t len;
 	struct
 	{
@@ -20,20 +19,17 @@ void LoadTranslateData()
 	hashToStrMap.clear();
 
 	auto hRes = FindResourceExW(g_hInst, L"YMO", MAKEINTRESOURCEW(1), GetThreadUILanguage());
-	if (hRes)
-	{
+	if (hRes) {
 		auto resourceSize = static_cast<size_t>(SizeofResource(g_hInst, hRes));
 		constexpr size_t headerSize = offsetof(YMOData, table);
 		if (resourceSize < headerSize)
 			return;
 
 		auto hResData = LoadResource(g_hInst, hRes);
-		if (hResData)
-		{
+		if (hResData) {
 			auto resourceBytes = reinterpret_cast<const uint8_t*>(LockResource(hResData));
 			auto ymo = reinterpret_cast<const YMOData*>(resourceBytes);
-			if (ymo)
-			{
+			if (ymo) {
 				auto tableSize = static_cast<size_t>(ymo->len) * sizeof(ymo->table[0]);
 				if (tableSize > resourceSize - headerSize)
 					return;
@@ -41,12 +37,10 @@ void LoadTranslateData()
 
 				hashToStrMap.reserve(ymo->len);
 
-				for (uint16_t i = 0; i < ymo->len; ++i)
-				{
+				for (uint16_t i = 0; i < ymo->len; ++i) {
 					auto hash = ymo->table[i].hash;
 					auto offset = static_cast<size_t>(ymo->table[i].offset);
-					if (offset < stringsOffset || offset % sizeof(wchar_t) != 0 ||
-						offset >= resourceSize || (resourceSize - offset) < sizeof(wchar_t))
+					if (offset < stringsOffset || offset % sizeof(wchar_t) != 0 || offset >= resourceSize || (resourceSize - offset) < sizeof(wchar_t))
 						continue;
 
 					auto str = reinterpret_cast<const wchar_t*>(resourceBytes + offset);
@@ -68,16 +62,14 @@ const wchar_t* Translate(const wchar_t* str)
 	auto translation = str;
 
 	auto i = ptrToStrMap.find(str);
-	if (i == ptrToStrMap.end())
-	{
+	if (i == ptrToStrMap.end()) {
 		auto hash = fnv1a_32(str, wcslen(str) * sizeof(wchar_t));
 		auto j = hashToStrMap.find(hash);
 		if (j != hashToStrMap.end())
 			translation = j->second;
 
 		ptrToStrMap.emplace(str, translation);
-	}
-	else
+	} else
 		translation = i->second;
 
 	return translation;

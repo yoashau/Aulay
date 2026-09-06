@@ -27,7 +27,8 @@ int main()
 	check(lines.front().find(L"capture-start") == 0);
 	check(lines.back().find(L"capture-end") == 0);
 	check(lines.back().find(L"not-proof-of-audibility") != std::wstring::npos);
-	for (auto const& line : lines) std::wcout << line << L'\n';
+	for (auto const& line : lines)
+		std::wcout << line << L'\n';
 	std::cout << "DEBUG_AUDIO checks=" << checks << " failures=" << failed << '\n';
 	return failed ? 1 : 0;
 }

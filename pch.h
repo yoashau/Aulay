@@ -10,7 +10,7 @@
 #include "targetver.h"
 
 // Windows Header Files
-#define WIN32_LEAN_AND_MEAN             // Exclude rarely-used stuff from Windows headers
+#define WIN32_LEAN_AND_MEAN // Exclude rarely-used stuff from Windows headers
 #include <windows.h>
 #include <commctrl.h>
 #include <shellapi.h>
@@ -67,4 +67,4 @@
 #include <winrt/Windows.UI.Xaml.Media.h>
 #include <winrt/Windows.UI.Text.h>
 
-#endif //PCH_H
+#endif // PCH_H

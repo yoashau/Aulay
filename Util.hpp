@@ -3,8 +3,7 @@
 // https://msdn.microsoft.com/en-us/magazine/mt763237
 std::wstring Utf8ToUtf16(std::string_view utf8)
 {
-	if (utf8.empty())
-	{
+	if (utf8.empty()) {
 		return {};
 	}
 
@@ -16,8 +15,7 @@ std::wstring Utf8ToUtf16(std::string_view utf8)
 		utf8.data(),
 		utf8Length,
 		nullptr,
-		0
-	);
+		0);
 	THROW_LAST_ERROR_IF(utf16Length == 0);
 
 	std::wstring utf16(utf16Length, L'\0');
@@ -27,8 +25,7 @@ std::wstring Utf8ToUtf16(std::string_view utf8)
 		utf8.data(),
 		utf8Length,
 		utf16.data(),
-		utf16Length
-	);
+		utf16Length);
 	THROW_LAST_ERROR_IF(result == 0);
 
 	return utf16;
@@ -36,8 +33,7 @@ std::wstring Utf8ToUtf16(std::string_view utf8)
 
 std::string Utf16ToUtf8(std::wstring_view utf16)
 {
-	if (utf16.empty())
-	{
+	if (utf16.empty()) {
 		return {};
 	}
 
@@ -50,8 +46,7 @@ std::string Utf16ToUtf8(std::wstring_view utf16)
 		utf16Length,
 		nullptr,
 		0,
-		nullptr, nullptr
-	);
+		nullptr, nullptr);
 	THROW_LAST_ERROR_IF(utf8Length == 0);
 
 	std::string utf8(utf8Length, '\0');
@@ -62,8 +57,7 @@ std::string Utf16ToUtf8(std::wstring_view utf16)
 		utf16Length,
 		utf8.data(),
 		utf8Length,
-		nullptr, nullptr
-	);
+		nullptr, nullptr);
 	THROW_LAST_ERROR_IF(result == 0);
 
 	return utf8;
@@ -76,8 +70,7 @@ auto GetModuleFsPath(HMODULE hModule)
 	std::wstring path(MAX_PATH, L'\0');
 	DWORD actualSize;
 
-	while (1)
-	{
+	while (1) {
 		actualSize = GetModuleFileNameW(hModule, path.data(), static_cast<DWORD>(path.size()));
 
 		if (static_cast<size_t>(actualSize) + 1 > path.size())

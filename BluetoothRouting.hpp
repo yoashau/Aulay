@@ -10,9 +10,7 @@
 
 inline bool SameDeviceInstance(std::wstring const& left, std::wstring const& right)
 {
-	return !left.empty() && left.size() == right.size() &&
-		std::equal(left.begin(), left.end(), right.begin(),
-			[](wchar_t a, wchar_t b) { return std::towupper(a) == std::towupper(b); });
+	return !left.empty() && left.size() == right.size() && std::equal(left.begin(), left.end(), right.begin(), [](wchar_t a, wchar_t b) { return std::towupper(a) == std::towupper(b); });
 }
 
 inline std::optional<size_t> SelectBluetoothAdapterIndex(
@@ -21,11 +19,9 @@ inline std::optional<size_t> SelectBluetoothAdapterIndex(
 {
 	// Ancestors are ordered nearest-first. Never select a different adapter just
 	// because it happens to be powered on. Unknown routes are ambiguous on multi-radio PCs.
-	for (auto const& ancestor : ancestors)
-	{
+	for (auto const& ancestor : ancestors) {
 		std::optional<size_t> match;
-		for (size_t i = 0; i < adapterInstances.size(); ++i)
-		{
+		for (size_t i = 0; i < adapterInstances.size(); ++i) {
 			if (!SameDeviceInstance(ancestor, adapterInstances[i]))
 				continue;
 			if (match)
@@ -41,11 +37,12 @@ inline std::optional<size_t> SelectBluetoothAdapterIndex(
 inline std::wstring DeviceInterfaceInstanceId(std::wstring const& interfaceId)
 {
 	DEVPROPTYPE type = 0;
-	wchar_t instance[MAX_DEVICE_ID_LEN]{};
+	wchar_t instance[MAX_DEVICE_ID_LEN] {};
 	ULONG size = sizeof(instance);
 	if (CM_Get_Device_Interface_PropertyW(interfaceId.c_str(), &DEVPKEY_Device_InstanceId,
-		&type, reinterpret_cast<PBYTE>(instance), &size, 0) != CR_SUCCESS ||
-		type != DEVPROP_TYPE_STRING || size > sizeof(instance))
+			&type, reinterpret_cast<PBYTE>(instance), &size, 0)
+			!= CR_SUCCESS
+		|| type != DEVPROP_TYPE_STRING || size > sizeof(instance))
 		return {};
 	instance[MAX_DEVICE_ID_LEN - 1] = L'\0';
 	return instance;
@@ -60,13 +57,12 @@ inline std::vector<std::wstring> DeviceAncestorIds(std::wstring const& interface
 	DEVINST node = 0;
 	if (CM_Locate_DevNodeW(&node, instance.data(), CM_LOCATE_DEVNODE_NORMAL) != CR_SUCCESS)
 		return ancestors;
-	for (size_t depth = 0; depth < 32; ++depth)
-	{
-		wchar_t id[MAX_DEVICE_ID_LEN]{};
+	for (size_t depth = 0; depth < 32; ++depth) {
+		wchar_t id[MAX_DEVICE_ID_LEN] {};
 		if (CM_Get_Device_IDW(node, id, MAX_DEVICE_ID_LEN, 0) != CR_SUCCESS)
 			break;
 		if (std::any_of(ancestors.begin(), ancestors.end(),
-			[&](auto const& previous) { return SameDeviceInstance(previous, id); }))
+				[&](auto const& previous) { return SameDeviceInstance(previous, id); }))
 			break;
 		ancestors.emplace_back(id);
 		DEVINST parent = 0;
@@ -77,17 +73,15 @@ inline std::vector<std::wstring> DeviceAncestorIds(std::wstring const& interface
 	return ancestors;
 }
 
-struct BluetoothRoute
-{
-	wil::unique_event ready{ wil::EventOptions::ManualReset };
-	std::atomic_bool completed{ false };
-	winrt::Windows::Devices::Radios::Radio radio{ nullptr };
+struct BluetoothRoute {
+	wil::unique_event ready { wil::EventOptions::ManualReset };
+	std::atomic_bool completed { false };
+	winrt::Windows::Devices::Radios::Radio radio { nullptr };
 	std::wstring adapterInstance;
 	HRESULT error = E_PENDING;
 };
 
-struct BluetoothRouteCache
-{
+struct BluetoothRouteCache {
 	std::mutex mutex;
 	std::unordered_map<std::wstring, std::shared_ptr<BluetoothRoute>> entries;
 };
@@ -107,8 +101,7 @@ inline void InvalidateBluetoothRoute(std::wstring const& deviceId)
 
 inline winrt::fire_and_forget PopulateBluetoothRoute(std::wstring deviceId, std::shared_ptr<BluetoothRoute> route)
 {
-	try
-	{
+	try {
 		co_await winrt::resume_background();
 		using namespace winrt::Windows::Devices::Bluetooth;
 		using namespace winrt::Windows::Devices::Enumeration;
@@ -130,9 +123,7 @@ inline winrt::fire_and_forget PopulateBluetoothRoute(std::wstring deviceId, std:
 			winrt::throw_hresult(HRESULT_FROM_WIN32(ERROR_NOT_FOUND));
 		route->adapterInstance = instances[*index];
 		route->error = S_OK;
-	}
-	catch (...)
-	{
+	} catch (...) {
 		route->error = static_cast<HRESULT>(winrt::to_hresult());
 	}
 	route->completed.store(true, std::memory_order_release);
@@ -172,12 +163,9 @@ ResolveBluetoothRadio(std::wstring deviceId, AsyncDeadline deadline, std::shared
 {
 	co_await winrt::resume_background();
 	auto route = PrewarmBluetoothRoute(deviceId);
-	if (route->completed.load(std::memory_order_acquire))
-	{
+	if (route->completed.load(std::memory_order_acquire)) {
 		DEVINST node = 0;
-		if (FAILED(route->error) || (!route->adapterInstance.empty() &&
-			CM_Locate_DevNodeW(&node, route->adapterInstance.data(), CM_LOCATE_DEVNODE_NORMAL) != CR_SUCCESS))
-		{
+		if (FAILED(route->error) || (!route->adapterInstance.empty() && CM_Locate_DevNodeW(&node, route->adapterInstance.data(), CM_LOCATE_DEVNODE_NORMAL) != CR_SUCCESS)) {
 			InvalidateBluetoothRoute(deviceId);
 			route = PrewarmBluetoothRoute(deviceId);
 		}

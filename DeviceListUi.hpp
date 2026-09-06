@@ -4,7 +4,6 @@
 // the stateful tray tooltip. Owns the discovered-device and row maps.
 #include "Aulay.h"
 
-
 struct DeviceRow {
 	UIElement panel;
 	TextBlock nameText;
@@ -20,8 +19,8 @@ std::unordered_map<std::wstring, DeviceInformation> g_discoveredDevices;
 std::unordered_map<std::wstring, std::shared_ptr<AudioFlow::State>> g_audioFlowTasks;
 bool AudioFlowTasksFinished()
 {
-    return std::all_of(g_audioFlowTasks.begin(), g_audioFlowTasks.end(),
-        [](auto const& item) { return item.second->done.load(); });
+	return std::all_of(g_audioFlowTasks.begin(), g_audioFlowTasks.end(),
+		[](auto const& item) { return item.second->done.load(); });
 }
 
 constexpr double DEVICE_LIST_WIDTH = 264.0;
@@ -45,13 +44,10 @@ void UpdateTrayTooltip()
 	std::wstring tip;
 	if (IsBluetoothRecoveryActive())
 		tip = _(L"Restarting Bluetooth...");
-	else
-	{
+	else {
 		std::wstring names;
-		try
-		{
-			for (const auto& item : g_app.sessions)
-			{
+		try {
+			for (const auto& item : g_app.sessions) {
 				if (item.second.phase != ConnectionPhase::Connected || !item.second.device)
 					continue;
 				auto name = item.second.device.Name();
@@ -61,9 +57,7 @@ void UpdateTrayTooltip()
 					names += L", ";
 				names += name;
 			}
-		}
-		catch (...)
-		{
+		} catch (...) {
 		}
 		if (!names.empty())
 			tip = std::wstring(_(L"Connected")) + L": " + names;
@@ -87,8 +81,7 @@ size_t ConnectionQueuePosition(std::wstring const& deviceId)
 	if (mine == g_app.connectionQueue.end())
 		return 1;
 	size_t position = 1;
-	for (auto it = g_app.connectionQueue.begin(); it != g_app.connectionQueue.end(); ++it)
-	{
+	for (auto it = g_app.connectionQueue.begin(); it != g_app.connectionQueue.end(); ++it) {
 		if (it == mine)
 			continue;
 		if (it->notBefore < mine->notBefore || (it->notBefore == mine->notBefore && it < mine))
@@ -99,9 +92,7 @@ size_t ConnectionQueuePosition(std::wstring const& deviceId)
 
 void ApplySessionStatusToRow(std::wstring const& deviceId)
 {
-	if ((g_app.unexpectedDisconnectRecoveryPending || g_app.bluetooth.inProgress) &&
-		deviceId == g_app.bluetooth.deviceId)
-	{
+	if ((g_app.unexpectedDisconnectRecoveryPending || g_app.bluetooth.inProgress) && deviceId == g_app.bluetooth.deviceId) {
 		// Only the device that owns the adapter reset reports the restart;
 		// every other row keeps its real state and stays actionable. Cancel
 		// opts out of the follow-up reconnect without stopping the radio
@@ -112,29 +103,29 @@ void ApplySessionStatusToRow(std::wstring const& deviceId)
 	}
 
 	auto session = g_app.sessions.find(deviceId);
-	if (session == g_app.sessions.end())
-	{
-        if(IsConnectionQueued(deviceId)) {
-            auto error=g_app.deviceErrors.find(deviceId);
-            std::wstring status=_(L"Waiting to retry...");
-            auto position=ConnectionQueuePosition(deviceId);
-            if(position>1)status+=L" (#"+std::to_wstring(position)+L")";
-            if(error!=g_app.deviceErrors.end())status+=L" "+FormatDeviceError(error->second);
-            UpdateDeviceRowStatus(deviceId,status,_(L"Cancel"),true);
-            UpdateTrayTooltip();
-            return;
-        }
-        auto error = g_app.deviceErrors.find(deviceId);
+	if (session == g_app.sessions.end()) {
+		if (IsConnectionQueued(deviceId)) {
+			auto error = g_app.deviceErrors.find(deviceId);
+			std::wstring status = _(L"Waiting to retry...");
+			auto position = ConnectionQueuePosition(deviceId);
+			if (position > 1)
+				status += L" (#" + std::to_wstring(position) + L")";
+			if (error != g_app.deviceErrors.end())
+				status += L" " + FormatDeviceError(error->second);
+			UpdateDeviceRowStatus(deviceId, status, _(L"Cancel"), true);
+			UpdateTrayTooltip();
+			return;
+		}
+		auto error = g_app.deviceErrors.find(deviceId);
 		UpdateDeviceRowStatus(
 			deviceId,
-			error == g_app.deviceErrors.end() ? std::wstring{} : FormatDeviceError(error->second),
+			error == g_app.deviceErrors.end() ? std::wstring {} : FormatDeviceError(error->second),
 			_(L"Quick Connect"),
 			true);
 		return;
 	}
 
-	switch (session->second.phase)
-	{
+	switch (session->second.phase) {
 	case ConnectionPhase::RecoveringBluetooth:
 		UpdateDeviceRowStatus(deviceId, _(L"Restarting Bluetooth..."), _(L"Cancel"), true);
 		break;
@@ -160,15 +151,13 @@ void RefreshEmptyState()
 		return;
 
 	auto generation = ++g_app.emptyStateGeneration;
-	if (!g_deviceRows.empty())
-	{
+	if (!g_deviceRows.empty()) {
 		g_emptyStateText.Visibility(Visibility::Collapsed);
 		return;
 	}
 
 	g_emptyStateText.Visibility(Visibility::Visible);
-	if (IsBluetoothRecoveryActive())
-	{
+	if (IsBluetoothRecoveryActive()) {
 		g_emptyStateText.Text(_(L"Restarting Bluetooth..."));
 		return;
 	}
@@ -185,15 +174,12 @@ winrt::fire_and_forget UpdateEmptyStateFromRadio(uint64_t generation)
 {
 	using namespace winrt::Windows::Devices::Radios;
 
-	try
-	{
+	try {
 		auto dispatcher = g_uiDispatcher;
 		auto radios = co_await Radio::GetRadiosAsync();
 		bool bluetoothOn = false;
-		for (const auto& radio : radios)
-		{
-			if (radio.Kind() == RadioKind::Bluetooth && radio.State() == RadioState::On)
-			{
+		for (const auto& radio : radios) {
+			if (radio.Kind() == RadioKind::Bluetooth && radio.State() == RadioState::On) {
 				bluetoothOn = true;
 				break;
 			}
@@ -209,9 +195,7 @@ winrt::fire_and_forget UpdateEmptyStateFromRadio(uint64_t generation)
 			g_emptyStateText.Text(_(L"Searching for Bluetooth audio devices..."));
 		else
 			g_emptyStateText.Text(_(L"No Bluetooth audio devices found.\nMake sure Bluetooth is turned on and your device is paired."));
-	}
-	catch (...)
-	{
+	} catch (...) {
 		if (!IsStopping())
 			LOG_CAUGHT_EXCEPTION();
 	}
@@ -223,18 +207,19 @@ void UpsertDeviceRow(DeviceInformation const& device)
 		return;
 
 	auto id = std::wstring(device.Id());
-    bool newlyPresent=g_discoveredDevices.count(id)==0;
-    g_discoveredDevices.insert_or_assign(id, device);
-    g_app.deviceChanged.SetEvent();
-    if(newlyPresent) {
-        for(auto& queued:g_app.connectionQueue)if(queued.deviceId==id)queued.notBefore={};
-        g_app.connectionQueueChanged.SetEvent();
-    }
+	bool newlyPresent = g_discoveredDevices.count(id) == 0;
+	g_discoveredDevices.insert_or_assign(id, device);
+	g_app.deviceChanged.SetEvent();
+	if (newlyPresent) {
+		for (auto& queued : g_app.connectionQueue)
+			if (queued.deviceId == id)
+				queued.notBefore = {};
+		g_app.connectionQueueChanged.SetEvent();
+	}
 	PrewarmBluetoothRoute(id);
 
 	auto existingRow = g_deviceRows.find(id);
-	if (existingRow != g_deviceRows.end())
-	{
+	if (existingRow != g_deviceRows.end()) {
 		existingRow->second.nameText.Text(device.Name());
 		ApplySessionStatusToRow(id);
 		RefreshEmptyState();
@@ -281,16 +266,18 @@ void UpsertDeviceRow(DeviceInformation const& device)
 			return;
 
 		auto session = g_app.sessions.find(id);
-		if (session != g_app.sessions.end())
-		{
-            DisconnectDevice(id);
-            return;
+		if (session != g_app.sessions.end()) {
+			DisconnectDevice(id);
+			return;
 		}
 
-        if(IsConnectionQueued(id)){DisconnectDevice(id);return;}
-        auto discovered = g_discoveredDevices.find(id);
-        if (discovered != g_discoveredDevices.end())
-            QueueConnection(discovered->second, ConnectionRequestMode::Quick);
+		if (IsConnectionQueued(id)) {
+			DisconnectDevice(id);
+			return;
+		}
+		auto discovered = g_discoveredDevices.find(id);
+		if (discovered != g_discoveredDevices.end())
+			QueueConnection(discovered->second, ConnectionRequestMode::Quick);
 	});
 
 	Button forceConnectButton;
@@ -298,14 +285,14 @@ void UpsertDeviceRow(DeviceInformation const& device)
 	forceConnectButton.Width(DEVICE_ACTION_BUTTON_WIDTH);
 	forceConnectButton.CornerRadius({ 4, 4, 4, 4 });
 	forceConnectButton.Click([id](const auto&, const auto&) {
-		if (IsStopping()) return;
-		if (g_app.sessions.count(id) != 0)
-		{
+		if (IsStopping())
+			return;
+		if (g_app.sessions.count(id) != 0) {
 			MarkNoSound(id);
 			return;
 		}
 
-        QueueConnection(id, ConnectionRequestMode::Forced);
+		QueueConnection(id, ConnectionRequestMode::Forced);
 	});
 
 	Grid actionGrid;
@@ -335,7 +322,7 @@ void UpsertDeviceRow(DeviceInformation const& device)
 	cardContent.Children().Append(actionGrid);
 
 	g_deviceListPanel.Children().Append(cardContent);
-	g_deviceRows.emplace(id, DeviceRow{ cardContent, nameText, statusText, quickConnectButton, forceConnectButton });
+	g_deviceRows.emplace(id, DeviceRow { cardContent, nameText, statusText, quickConnectButton, forceConnectButton });
 	ApplySessionStatusToRow(id);
 	RefreshEmptyState();
 }
@@ -384,9 +371,7 @@ void UpdateDeviceRowStatus(
 	row->second.actionButton.Content(winrt::box_value(std::wstring(buttonLabel)));
 	row->second.actionButton.IsEnabled(buttonEnabled);
 	row->second.forceConnectButton.Content(winrt::box_value(showNoSound ? _(L"No sound") : _(L"Force Connect")));
-	ToolTipService::SetToolTip(row->second.forceConnectButton, showNoSound &&
-		g_app.sessions.count(deviceId) && g_app.sessions.at(deviceId).noSoundReports
-		? winrt::box_value(_(L"No sound recorded")) : nullptr);
+	ToolTipService::SetToolTip(row->second.forceConnectButton, showNoSound && g_app.sessions.count(deviceId) && g_app.sessions.at(deviceId).noSoundReports ? winrt::box_value(_(L"No sound recorded")) : nullptr);
 	auto showSecondary = showForceAction || showNoSound;
 	row->second.actionButton.Width(showSecondary ? DEVICE_ACTION_BUTTON_WIDTH : DEVICE_ACTION_ROW_WIDTH);
 	Grid::SetColumnSpan(row->second.actionButton, showSecondary ? 1 : 2);

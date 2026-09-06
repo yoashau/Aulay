@@ -1,0 +1,12 @@
+# Aulay formatting: tabs at width 4, WebKit-style braces (function bodies on
+# their own line, control blocks attached), no include reordering -- include
+# order is load-bearing in this single translation unit.
+Language: Cpp
+BasedOnStyle: WebKit
+IndentWidth: 4
+TabWidth: 4
+UseTab: ForContinuationAndIndentation
+ColumnLimit: 0
+PointerAlignment: Left
+SortIncludes: Never
+AllowShortFunctionsOnASingleLine: Inline

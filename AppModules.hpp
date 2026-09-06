@@ -8,7 +8,6 @@
 // Session teardown is shared by the connection flow and Bluetooth recovery.
 bool CloseConnectionSession(std::wstring const& deviceId, std::optional<uint64_t> generation, bool markRecoveryNeeded, bool radioWillReset = false);
 
-
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 void SetupFlyout();
 void SetupMenu();

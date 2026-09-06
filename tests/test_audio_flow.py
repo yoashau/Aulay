@@ -13,10 +13,10 @@ with tempfile.TemporaryDirectory(prefix="aulay-flow-") as tmp:
 helper = (root / 'AudioFlowRecovery.hpp').read_text()
 guards = [
     'CM_GETIDLIST_FILTER_ENUMERATOR' in helper and 'CM_LOCATE_DEVNODE_PHANTOM' in helper,
-    'DEVPKEY_Device_Parent' in helper and '_wcsicmp(actualParent,parentId)!=0' in helper,
-    'if (!selected.empty()) return {}' in helper,
+    'DEVPKEY_Device_Parent' in helper and '_wcsicmp(actualParent, parentId) != 0' in helper,
+    'if (!selected.empty())' in helper and 'return {}; // ambiguous mapping is not permission to guess' in helper,
     'SetDefaultEndpoint(' not in helper.split('inline HRESULT Cycle', 1)[1],
-    's->cleanupResult=error' in helper,
+    's->cleanupResult = error' in helper,
 ]
 assert all(guards), guards
 print('FLOW_INTEGRATION_GUARDS 5/5 passed')
@@ -29,6 +29,6 @@ assert 'WaitFinished(previousTask)' in app and 'closedSignal' in helper
 assert 'QueueConnection(deviceId, ConnectionRequestMode::Forced);' in app.split('void MarkNoSound(std::wstring const& deviceId)\n{',1)[1].split('}',1)[0]
 print('RESPONSIVE_GUARDS 5/5 passed')
 
-assert 'if(predecessor && predecessor!=flow)co_await AudioFlow::WaitFinished(predecessor)' in app
-assert app.count('cancellation.callback([operation]{CancelAsyncInBackground(operation);});') == 3
+assert 'if (predecessor && predecessor != flow)\n\t\t\tco_await AudioFlow::WaitFinished(predecessor);' in app
+assert app.count('cancellation.callback([operation] { CancelAsyncInBackground(operation); });') == 3
 print('CANCELLATION_AND_CLEANUP_CHAIN=PASS')

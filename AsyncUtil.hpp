@@ -4,18 +4,17 @@
 // Callbacks capture only weak waiter state, not the UI or application globals.
 using AsyncDeadline = std::chrono::steady_clock::time_point;
 
-struct AsyncWaitSignal
-{
-	wil::unique_event signal{ wil::EventOptions::ManualReset };
-	std::atomic_bool completed{ false };
-	std::atomic_bool cancelled{ false };
+struct AsyncWaitSignal {
+	wil::unique_event signal { wil::EventOptions::ManualReset };
+	std::atomic_bool completed { false };
+	std::atomic_bool cancelled { false };
 };
 
-class AsyncCancellation
-{
+class AsyncCancellation {
 	std::mutex mutex;
-	std::atomic_bool requested{ false };
+	std::atomic_bool requested { false };
 	std::vector<std::weak_ptr<AsyncWaitSignal>> waiters;
+
 public:
 	bool Requested() const noexcept { return requested.load(); }
 
@@ -23,13 +22,12 @@ public:
 	{
 		std::lock_guard<std::mutex> lock(mutex);
 		waiters.erase(std::remove_if(waiters.begin(), waiters.end(),
-			[](auto const& item) { return item.expired(); }), waiters.end());
-		if (requested)
-		{
+						  [](auto const& item) { return item.expired(); }),
+			waiters.end());
+		if (requested) {
 			waiter->cancelled = true;
 			waiter->signal.SetEvent();
-		}
-		else
+		} else
 			waiters.emplace_back(waiter);
 	}
 
@@ -37,10 +35,8 @@ public:
 	{
 		std::lock_guard<std::mutex> lock(mutex);
 		requested = true;
-		for (auto const& weak : waiters)
-		{
-			if (auto waiter = weak.lock())
-			{
+		for (auto const& weak : waiters) {
+			if (auto waiter = weak.lock()) {
 				waiter->cancelled = true;
 				waiter->signal.SetEvent();
 			}
@@ -57,25 +53,23 @@ inline void CheckAsyncDeadline(AsyncDeadline deadline, std::shared_ptr<AsyncCanc
 		winrt::throw_hresult(HRESULT_FROM_WIN32(ERROR_TIMEOUT));
 }
 
-template<typename Async>
+template <typename Async>
 winrt::fire_and_forget CancelAsyncInBackground(Async operation)
 {
-	try
-	{
+	try {
 		// A broken implementation of Cancel must not stall the UI or its waiter.
 		co_await winrt::resume_background();
 		operation.Cancel();
+	} catch (...) {
 	}
-	catch (...) {}
 }
 
-template<typename Async>
+template <typename Async>
 winrt::Windows::Foundation::IAsyncAction AwaitCompletionUntil(
 	Async operation, AsyncDeadline deadline, std::shared_ptr<AsyncCancellation> cancellation = {})
 {
 	using winrt::Windows::Foundation::AsyncStatus;
-	try
-	{
+	try {
 		CheckAsyncDeadline(deadline, cancellation);
 		if (operation.Status() != AsyncStatus::Started)
 			co_return;
@@ -84,8 +78,7 @@ winrt::Windows::Foundation::IAsyncAction AwaitCompletionUntil(
 		if (cancellation)
 			cancellation->Register(waiter);
 		operation.Completed([weak = std::weak_ptr<AsyncWaitSignal>(waiter)](auto const&, auto const&) noexcept {
-			if (auto state = weak.lock())
-			{
+			if (auto state = weak.lock()) {
 				state->completed = true;
 				state->signal.SetEvent();
 			}
@@ -100,15 +93,13 @@ winrt::Windows::Foundation::IAsyncAction AwaitCompletionUntil(
 			winrt::throw_hresult(HRESULT_FROM_WIN32(ERROR_CANCELLED));
 		if (!waiter->completed)
 			winrt::throw_hresult(HRESULT_FROM_WIN32(ERROR_TIMEOUT));
-	}
-	catch (...)
-	{
+	} catch (...) {
 		CancelAsyncInBackground(operation);
 		throw;
 	}
 }
 
-template<typename T>
+template <typename T>
 winrt::Windows::Foundation::IAsyncOperation<T> AwaitBounded(
 	winrt::Windows::Foundation::IAsyncOperation<T> operation,
 	AsyncDeadline deadline, std::shared_ptr<AsyncCancellation> cancellation = {})

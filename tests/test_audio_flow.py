@@ -21,7 +21,7 @@ guards = [
 assert all(guards), guards
 print('FLOW_INTEGRATION_GUARDS 5/5 passed')
 
-app=''.join((root/name).read_text(encoding='utf-8-sig') for name in ('Aulay.cpp', 'AppModules.hpp', 'ConnectionState.hpp', 'DeviceListUi.hpp', 'BluetoothRecovery.hpp', 'ConnectionFlow.hpp', 'DeviceWatcher.hpp', 'TrayPanel.hpp'))
+app=''.join((root/name).read_text(encoding='utf-8-sig') for name in ('Aulay.cpp', 'AppModules.hpp', 'ConnectionState.hpp', 'SettingsSave.hpp', 'DeviceListUi.hpp', 'BluetoothRecovery.hpp', 'ConnectionFlow.hpp', 'DeviceWatcher.hpp', 'TrayPanel.hpp'))
 assert 'CONNECTION_MAX_TRIES' not in app and 'retryBudgetMs' not in app
 assert 'co_await winrt::resume_background();' in app.split('CloseSessionInBackground(',1)[1].split('bool CloseConnectionSession',1)[0]
 assert 'Sleep(1000)' not in helper and 'RegisterEndpointNotificationCallback' in helper

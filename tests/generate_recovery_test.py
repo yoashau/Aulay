@@ -49,6 +49,9 @@ uint64_t ElapsedMilliseconds(steady_clock::time_point start) { return duration_c
 IAsyncAction SetBluetoothRecoveryStage(BluetoothRecoveryStage) { co_return; }
 '''
 code+=ns['function']('BluetoothRecoveryResultName')+'\n'+ns['function']('RadioAccessStatusName')+'\n'
+code+=ns['re'].search(r'^constexpr uint32_t RADIO_DEACTIVATION_GRACE_TAIL_MS = \d+;', ns['CPP'], ns['re'].M).group()+'\n'
+code+=ns['re'].search(r'^std::atomic<ULONGLONG> g_radioTransitionGraceUntilMs.*$', ns['CPP'], ns['re'].M).group()+'\n'
+code+=ns['function']('NoteRadioTransitionStarted')+'\n'+ns['function']('NoteRadioTransitionSettled')+'\n'
 code+=r'''
 struct Scenario {
  std::atomic<RadioState> state{RadioState::On};

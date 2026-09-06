@@ -342,6 +342,7 @@
     <ClInclude Include="ConnectionFlow.hpp" />
     <ClInclude Include="DeviceWatcher.hpp" />
     <ClInclude Include="TrayPanel.hpp" />
+    <ClInclude Include="SettingsSave.hpp" />
     <ClInclude Include="Version.h" />
     <ClInclude Include="BuildVariant.hpp" />
     <ClInclude Include="DebugAudioDiagnostics.hpp" />

@@ -5,6 +5,7 @@
 // and error state accessors. Pure state and helpers; no UI, no coroutines.
 #include "Aulay.h"
 #include "DebugAudioMonitor.hpp"
+#include "SettingsSave.hpp"
 
 constexpr uint32_t CONNECTION_OPENED_WAIT_MS = 1500;
 // Retry indefinitely until success/cancellation; only the interval is capped.
@@ -325,7 +326,7 @@ void RememberDevice(std::wstring const& deviceId)
 
 	g_app.desiredDevices.push_back(deviceId);
 	if (g_app.reconnectEnabled)
-		SaveSettings();
+		QueueSaveSettings();
 }
 
 void ForgetDevice(std::wstring const& deviceId)
@@ -335,7 +336,7 @@ void ForgetDevice(std::wstring const& deviceId)
 		std::remove(g_app.desiredDevices.begin(), g_app.desiredDevices.end(), deviceId),
 		g_app.desiredDevices.end());
 	if (oldSize != g_app.desiredDevices.size() && g_app.reconnectEnabled)
-		SaveSettings();
+		QueueSaveSettings();
 }
 
 void ClearDeviceError(std::wstring const& deviceId)

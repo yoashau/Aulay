@@ -38,6 +38,7 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="AudioFlowRecovery.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="SettingsSave.hpp"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="AppModules.hpp"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="ConnectionState.hpp"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="DeviceListUi.hpp"><Filter>Header Files</Filter></ClInclude>

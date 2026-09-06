@@ -8,7 +8,7 @@ root = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).reso
 def source(name):
     path = root / name
     return path.read_text(encoding='utf-8-sig') if path.exists() else ''
-app = ''.join(source(name) for name in ('Aulay.cpp', 'AppModules.hpp', 'ConnectionState.hpp', 'DeviceListUi.hpp', 'BluetoothRecovery.hpp', 'ConnectionFlow.hpp', 'DeviceWatcher.hpp', 'TrayPanel.hpp'))
+app = ''.join(source(name) for name in ('Aulay.cpp', 'AppModules.hpp', 'ConnectionState.hpp', 'SettingsSave.hpp', 'DeviceListUi.hpp', 'BluetoothRecovery.hpp', 'ConnectionFlow.hpp', 'DeviceWatcher.hpp', 'TrayPanel.hpp'))
 async_code = source('AsyncUtil.hpp')
 routing = source('BluetoothRouting.hpp')
 settings = source('SettingsUtil.hpp')
@@ -26,7 +26,7 @@ checks = {
     'ambiguous route fails explicitly': 'if (!index)' in routing and 'ERROR_NOT_FOUND' in routing,
     'discovery prewarms route without awaiting': 'PrewarmBluetoothRoute(id);' in app and 'co_await PrewarmBluetoothRoute' not in app,
     'device removal invalidates cached association': 'InvalidateBluetoothRoute(deviceId);' in app,
-    'fallback is cached only after successful write': 'g_settingsStorage.activePath = path;' in settings and 'WriteSettingsAtomically(path, pending.utf8);' in settings,
+    'fallback is cached only after successful write': 'g_settingsStorage.activePath = path;' in settings and 'WriteSettingsAtomically(path, utf8);' in settings and 'WriteSettingsAtomically(path, pending.utf8);' in settings + source('SettingsSave.hpp'),
     'startup chooses newer valid settings': 'PreferFallbackSettings(first, second)' in settings and 'ReadSettingsFile(path)' in settings,
     'both locations failing notify user': 'saveErrorShown' in settings and 'Settings could not be saved.' in settings,
     'atomic durable settings writes retained': all(call in settings for call in ('FlushFileBuffers(', 'ReplaceFileW(', 'MoveFileExW(')),

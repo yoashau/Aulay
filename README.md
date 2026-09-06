@@ -18,7 +18,7 @@ A lightweight Windows tray utility that lets your PC play audio sent by a paired
 - **Force Connect** — resets the associated Bluetooth adapter first, then connects; retries never repeat the reset.
 - **No sound** — records a diagnostic marker with an audio-timeline snapshot, then reconnects through the forced path.
 - **Cancel** — available while connecting or while waiting for a retry.
-- **Auto reconnect** — an unexpected disconnect of an established link triggers adapter-reset recovery, then automatic reconnection when enabled. Retries back off from 200 ms to a 300 s cap and continue until success, cancellation or exit.
+- **Auto reconnect** — an unexpected disconnect of an established link triggers adapter-reset recovery, then automatic reconnection when enabled. The switch is the check box in the exit-confirmation flyout, and it also controls startup reconnect. Retries back off from 200 ms to a 300 s cap and continue until success, cancellation or exit.
 - **Stateful tray tooltip** — connected devices, connecting or recovery at a glance.
 - **Single instance** — launching a second copy shows a notice instead of duplicating the tray icon.
 

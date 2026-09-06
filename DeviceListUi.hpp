@@ -150,9 +150,6 @@ void ApplySessionStatusToRow(std::wstring const& deviceId)
 	case ConnectionPhase::Closing:
 		UpdateDeviceRowStatus(deviceId, _(L"Disconnecting..."), _(L"Disconnect"), false, false);
 		break;
-	case ConnectionPhase::Failed:
-		UpdateDeviceRowStatus(deviceId, _(L"Unknown error"), _(L"Quick Connect"), true);
-		break;
 	}
 	UpdateTrayTooltip();
 }

@@ -213,7 +213,6 @@ const wchar_t* ConnectionPhaseName(ConnectionPhase phase)
 	case ConnectionPhase::WaitingForOpened: return L"waiting-for-opened";
 	case ConnectionPhase::Connected: return L"connected";
 	case ConnectionPhase::Closing: return L"closing";
-	case ConnectionPhase::Failed: return L"failed";
 	default: return L"unknown";
 	}
 }

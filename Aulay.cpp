@@ -227,7 +227,6 @@ void BeginShutdown()
 	if (g_app.bluetooth.cancellation)
 		g_app.bluetooth.cancellation->Request();
 	g_app.connectionQueue.clear();
-    g_app.connectionQueueChanged.SetEvent();
 	g_app.connectionQueueChanged.SetEvent();
 	for (auto& generation : g_app.connectGenerations)
 		++generation.second;
@@ -258,7 +257,20 @@ winrt::fire_and_forget FinishShutdownWhenReady()
         }
         std::vector<std::shared_ptr<AudioFlow::State>> tasks;
         for(auto const& item:g_audioFlowTasks)tasks.push_back(item.second);
-        for(auto const& task:tasks)co_await AudioFlow::WaitFinished(task);
+        // Bounded drain, mirroring the audio monitor's 5s shutdown budget: a
+        // driver-level hang inside connection.Close() must not block exit.
+        auto flowDrainDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(5000);
+        for(auto const& task:tasks)
+        {
+            try
+            {
+                co_await AwaitBounded(AudioFlow::WaitFinished(task), flowDrainDeadline);
+            }
+            catch (...)
+            {
+                RecordDiagnostic(L"lifecycle", L"audio-flow drain timeout; continuing shutdown");
+            }
+        }
         co_await winrt::resume_foreground(dispatcher);
 
 		EnqueueDebugAudioEvent(L"shutdown final-audio-request", true);

@@ -215,7 +215,7 @@ def run():
         'radio recovery skips redundant endpoint cleanup': '!g_app.unexpectedDisconnectRecoveryPending' in function('CloseConnectionSession'),
         'unexpected reconnect retains preference and generation guard': all(x in function('BeginUnexpectedDisconnectRecovery') for x in ('g_app.reconnectEnabled && IsDesiredDevice(deviceId)', 'g_app.connectGenerations[deviceId] == generation')),
         'new connection waits for old endpoint cleanup': 'AwaitBounded(AudioFlow::WaitFinished(previousTask),attemptDeadline,attemptCancellation)' in connect,
-        'shutdown waits for endpoint restore': 'co_await AudioFlow::WaitFinished(task)' in function('FinishShutdownWhenReady'),
+        'shutdown waits for endpoint restore': 'AwaitBounded(AudioFlow::WaitFinished(task), flowDrainDeadline)' in function('FinishShutdownWhenReady'),
         'connection request radio dispatch requires forced initial request': 'request.mode != ConnectionRequestMode::Forced || request.retryCount != 0' in connect,
         'queue wait is interruptible': 'resume_on_signal(g_app.connectionQueueChanged.get(), delay)' in worker,
         'shutdown wakes deferred queue': 'connectionQueueChanged.SetEvent()' in function('BeginShutdown'),

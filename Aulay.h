@@ -55,7 +55,6 @@ enum class ConnectionPhase
 	WaitingForOpened,
 	Connected,
 	Closing,
-	Failed,
 };
 
 enum class BluetoothRecoveryStage

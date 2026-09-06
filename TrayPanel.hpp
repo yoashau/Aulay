@@ -59,11 +59,19 @@ LRESULT CALLBACK DeviceFlyoutMouseHook(int nCode, WPARAM wParam, LPARAM lParam)
 			|| message == WM_NCLBUTTONDOWN || message == WM_NCRBUTTONDOWN)
 		{
 			auto info = reinterpret_cast<MSLLHOOKSTRUCT*>(lParam);
-			HWND target = WindowFromPoint(info->pt);
-			DWORD processId = 0;
-			GetWindowThreadProcessId(target, &processId);
-			if (processId != GetCurrentProcessId())
-				DismissDeviceFlyoutFromHook();
+			// A click on our own tray icon is the shell's toggle gesture; it must
+			// not race a hook-initiated dismissal or the flyout reopens itself.
+			RECT iconRect{};
+			bool onTrayIcon = SUCCEEDED(Shell_NotifyIconGetRect(&g_niid, &iconRect)) &&
+				PtInRect(&iconRect, info->pt);
+			if (!onTrayIcon)
+			{
+				HWND target = WindowFromPoint(info->pt);
+				DWORD processId = 0;
+				GetWindowThreadProcessId(target, &processId);
+				if (processId != GetCurrentProcessId())
+					DismissDeviceFlyoutFromHook();
+			}
 		}
 	}
 	return CallNextHookEx(nullptr, nCode, wParam, lParam);

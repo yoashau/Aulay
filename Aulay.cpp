@@ -260,6 +260,8 @@ winrt::fire_and_forget FinishShutdownWhenReady()
 		co_await WaitDebugAudioMonitorFinished(); // completion event, bounded at 5s
 		co_await winrt::resume_foreground(dispatcher);
 		RecordDiagnostic(L"diagnostics", std::wstring(DebugAudioMonitorFinished() ? L"audio-monitor finished " : L"audio-monitor shutdown-timeout-ms=5000 pending-capture-may-be-truncated ") + DebugAudioMonitorStatus());
+		co_await FlushPendingSettings();
+		co_await winrt::resume_foreground(dispatcher);
 		PostMessageW(g_hWnd, WM_FINISHSHUTDOWN, 0, 0);
 	} catch (...) {
 		LOG_CAUGHT_EXCEPTION();
@@ -298,7 +300,6 @@ void ShutdownApplication()
 	for (const auto& deviceId : sessionIds)
 		CloseConnectionSession(deviceId, std::nullopt, false);
 
-	FlushPendingSettings();
 	Shell_NotifyIconW(NIM_DELETE, &g_nid);
 
 	auto trayIcon = g_hTrayIcon;

@@ -19,7 +19,7 @@ Requirements: Python 3, Git, and a C++17 compiler (GCC or Clang for the portable
 | `test_hardening.py` | Portable | Source-level deadline, routing and settings constraints |
 | `test_debug_markers.py` | Portable + C++17 | Executes marker/disconnect functions with fake UI/connections; checks unified diagnostics and Forced request dispatch |
 | `test_debug_timeline.py` | Portable | Source-level collector and timeline constraints |
-| `run_windows_tests.cmd` | Windows, Release x64 build | Native deadlines, routing selection, settings persistence and generated recovery fault harness |
+| `run_windows_tests.cmd` | Windows, Release x64 build | Native deadlines, routing selection, settings persistence, asynchronous shutdown drain and generated recovery fault harness |
 | `run_debug_audio_test.cmd` | Windows, unified Release x64 build | Diagnostic snapshot formatting and collection |
 | `run_debug_monitor_test.cmd` | Windows, unified Release x64 build | Native journal, queue, rotation, retention and callback behavior |
 | `check_format.py` | Portable | clang-format compliance over the app sources (CI pins clang-format 19.1.5) |
@@ -42,7 +42,7 @@ These are deliberate opt-in checks, not CI coverage:
 - `run_debug_monitor_test.cmd --audio`: creates the test program's own silent WASAPI session to verify endpoint/session events.
 - `generate_debug_ui_fixture.py OUTPUT_CPP` and `run_debug_ui_smoke.ps1 -ExePath FIXTURE_EXE`: generate, build and exercise an instrumented UI fixture in a disposable source copy. The fixture source replaces `Aulay.cpp` only in that copy; build it with the normal unified build. Use a dedicated executable directory because the smoke script writes `Aulay.json` beside the fixture EXE. Never distribute this instrumented executable.
 
-`generate_recovery_test.py` is a helper invoked by `run_windows_tests.cmd`, not an independent test suite.
+`generate_recovery_test.py` and `generate_settings_test.py` are helpers invoked by `run_windows_tests.cmd`, not independent test suites. The settings harness executes the actual worker and drain with a pumped dispatcher and controlled I/O: fast completion, an in-flight older snapshot, a hung write, and write/snapshot failures.
 
 Portable source checks are not full application builds. Native fault tests do not power-cycle Bluetooth. Real-device connection, audible playback, unexpected disconnects and exit during recovery need Windows hardware testing.
 
@@ -57,3 +57,5 @@ Portable source checks are not full application builds. Native fault tests do no
 A tag push builds all four release architectures and creates a draft release containing the executable files directly: `Aulay64.exe`, `Aulay32.exe`, `AulayARM64.exe`, and `AulayARM.exe`. Missing files fail the release step. Publish the draft manually after checking it. All executable assets include diagnostics; there is no separate diagnostic edition.
 
 The tested x64 executable is uploaded as an Actions artifact before the additional architecture builds, so it remains downloadable if a later build fails. A failed tag run does not create a complete release. Re-running a failed run uses that run's original commit; include workflow fixes in the commit referenced by the release tag before retrying.
+
+Release downloads are the four EXE assets directly; no separately maintained local ZIP or `dist/` packaging step is required.

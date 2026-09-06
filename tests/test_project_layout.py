@@ -53,7 +53,7 @@ def main():
         'tested x64 artifact is uploaded before other architectures': workflow.index('name: Aulay-x64')
             < workflow.index('name: Build ARM64'),
         'native tests use SDK WinRT headers rather than generated package headers': all('Generated Files' not in read('tests/' + name) for name in native_scripts),
-        'native tests use standard C++20 coroutines': len(native_commands) == 4 and all(
+        'native tests use standard C++20 coroutines': len(native_commands) == 5 and all(
             '/std:c++20' in line.split() and not any(option.startswith('/await') for option in line.split())
             for line in native_commands),
         'project references existing source files': all((ROOT / f.replace('\\', '/')).is_file() for _, f in items),

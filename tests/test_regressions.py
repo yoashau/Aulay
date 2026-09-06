@@ -227,6 +227,9 @@ def run():
         'stale watcher callbacks are rejected': function('StartDeviceWatcher').count('g_deviceWatcher != sender') >= 5,
         'log writes do not force a disk flush': 'FlushFileBuffers(' not in function('WriteDiagnosticEntryLocked', DIAG),
         'shutdown still flushes logs': 'FlushFileBuffers(file->logFile.get())' in function('InitializeDiagnostics', DIAG) and 'g_diagnosticWriter->Stop()' in function('CloseDiagnostics', DIAG),
+        'settings shutdown awaits worker before destroying window': 'co_await FlushPendingSettings();' in function('FinishShutdownWhenReady') and 'FlushPendingSettings' not in function('ShutdownApplication'),
+        'settings shutdown wait pumps dispatcher and has a deadline': 'co_await winrt::resume_on_signal(g_settingsSaveIdle.get(), std::chrono::milliseconds(5000))' in function('FlushPendingSettings') and '.wait(' not in function('FlushPendingSettings'),
+        'settings failure during shutdown has no modal dialog': 'saveFailed && !IsStopping()' in function('SaveSettingsWorker'),
         'settings retain durable atomic writes': all(x in (ROOT/'SettingsUtil.hpp').read_text() for x in ('FlushFileBuffers(', 'ReplaceFileW(', 'MoveFileExW(')),
         'tray and app share one icon source': re.findall(r'^IDI_\w+\s+ICON\s+"([^"]+)"', (ROOT/'Aulay.rc').read_text(encoding='utf-16'), re.M) == ['Aulay.ico', 'Aulay.ico'],
     }

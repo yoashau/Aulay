@@ -6,7 +6,7 @@
 // installation on slow storage never stalls connection handling. While a
 // write is in flight, a newer snapshot replaces the pending one and the
 // worker persists the latest state. Shutdown drains the pending snapshot
-// synchronously via FlushPendingSettings. The native hardening test
+// asynchronously via FlushPendingSettings before destroying the UI. The native hardening test
 // exercises the synchronous core directly and must keep compiling without
 // this header.
 #include <winrt/Windows.UI.Core.h>
@@ -19,22 +19,27 @@ struct PendingSettingsSave {
 };
 PendingSettingsSave g_settingsPending; // UI-thread only
 bool g_settingsSaveWorkerRunning = false; // UI-thread only
+bool g_settingsSaveFailed = false; // UI-thread only
 wil::unique_event g_settingsSaveIdle { wil::EventOptions::ManualReset };
 
 winrt::fire_and_forget SaveSettingsWorker();
 
-void QueueSaveSettings()
+bool QueueSaveSettings()
 {
 	try {
 		g_settingsPending = PendingSettingsSave { BuildSettingsJson(), g_app.desiredDevices.size() };
+		g_settingsSaveFailed = false;
 		if (g_settingsSaveWorkerRunning)
-			return;
+			return true;
 		g_settingsSaveWorkerRunning = true;
 		g_settingsSaveIdle.ResetEvent();
 		SaveSettingsWorker();
+		return true;
 	} catch (...) {
+		g_settingsSaveFailed = true;
 		RecordDiagnostic(L"settings", L"settings snapshot failed hr=" + FormatDiagnosticHresult(static_cast<HRESULT>(winrt::to_hresult())));
 		LOG_CAUGHT_EXCEPTION();
+		return false;
 	}
 }
 
@@ -72,7 +77,8 @@ winrt::fire_and_forget SaveSettingsWorker()
 		saveFailed = true;
 	}
 	co_await winrt::resume_foreground(dispatcher);
-	if (saveFailed && !g_settingsStorage.saveErrorShown) {
+	g_settingsSaveFailed = saveFailed;
+	if (saveFailed && !IsStopping() && !g_settingsStorage.saveErrorShown) {
 		g_settingsStorage.saveErrorShown = true;
 		TaskDialog(IsWindow(g_hWnd) ? g_hWnd : nullptr, nullptr, _(L"Aulay"), nullptr,
 			_(L"Settings could not be saved. Check folder access or available disk space."),
@@ -88,11 +94,24 @@ winrt::fire_and_forget SaveSettingsWorker()
 	}
 }
 
-// Shutdown drain: queue the latest snapshot, then wait bounded for the worker
-// so the process does not exit before the file is replaced.
-void FlushPendingSettings()
+// Keep the dispatcher alive and pumping while the worker commits its latest
+// snapshot. A timeout bounds shutdown, but is not reported as a successful save.
+winrt::Windows::Foundation::IAsyncAction FlushPendingSettings()
 {
-	QueueSaveSettings();
+	auto dispatcher = g_uiDispatcher;
+	co_await winrt::resume_foreground(dispatcher);
+	if (!QueueSaveSettings()) {
+		RecordDiagnostic(L"settings", L"shutdown settings drain failed latest-snapshot-may-be-unsaved");
+		co_return;
+	}
+	bool finished = true;
 	if (g_settingsSaveWorkerRunning)
-		g_settingsSaveIdle.wait(5000);
+		finished = co_await winrt::resume_on_signal(g_settingsSaveIdle.get(), std::chrono::milliseconds(5000));
+	co_await winrt::resume_foreground(dispatcher);
+	if (!finished)
+		RecordDiagnostic(L"settings", L"shutdown settings drain timeout-ms=5000 latest-snapshot-may-be-unsaved");
+	else if (g_settingsSaveFailed || !g_settingsPending.utf8.empty())
+		RecordDiagnostic(L"settings", L"shutdown settings drain failed latest-snapshot-may-be-unsaved");
+	else
+		RecordDiagnostic(L"settings", L"shutdown settings drain complete");
 }

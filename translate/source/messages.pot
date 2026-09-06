@@ -1,0 +1,152 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR Richard Yu <yurichard3839@gmail.com>
+# This file is distributed under the same license as the Aulay package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: Aulay\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-07-22 15:24+0800\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: Aulay.cpp:71
+msgid "Unsupported Operating System"
+msgstr ""
+
+#: Aulay.cpp:71
+msgid "Aulay is not supported on this operating system version."
+msgstr ""
+
+#: Aulay.cpp:108 Aulay.cpp:321 Aulay.cpp:343
+msgid "Aulay"
+msgstr ""
+
+#: Aulay.cpp:268
+msgid ""
+"All connections will be closed.\n"
+"Exit anyway?"
+msgstr ""
+
+#: Aulay.cpp:273
+msgid "Reconnect on next start"
+msgstr ""
+
+#: Aulay.cpp:276 Aulay.cpp:356
+msgid "Exit"
+msgstr ""
+
+#: Aulay.cpp:304
+msgid "Bluetooth Settings"
+msgstr ""
+
+#: Aulay.cpp:314
+msgid "Copy Diagnostics"
+msgstr ""
+
+#: Aulay.cpp:324
+msgid "Diagnostic information was copied to the clipboard."
+msgstr ""
+
+#: Aulay.cpp:325
+msgid "Unable to copy diagnostic information."
+msgstr ""
+
+#: Aulay.cpp:335
+msgid "Open Log Folder"
+msgstr ""
+
+#: Aulay.cpp:345
+msgid "Unable to open the log folder."
+msgstr ""
+
+#: Aulay.cpp:707 Aulay.cpp:715 Aulay.cpp:720 Aulay.cpp:729 Aulay.cpp:829
+#: Aulay.cpp:998
+msgid "Quick Connect"
+msgstr ""
+
+#: Aulay.cpp:853
+msgid "Force Connect"
+msgstr ""
+
+#: Aulay.cpp:628 Aulay.cpp:661
+msgid "Restarting Bluetooth..."
+msgstr ""
+
+#: Aulay.cpp:632
+msgid "Connecting..."
+msgstr ""
+
+#: Aulay.cpp:635
+msgid "Connected"
+msgstr ""
+
+#: Aulay.cpp:635 Aulay.cpp:638
+msgid "Disconnect"
+msgstr ""
+
+#: Aulay.cpp:638
+msgid "Disconnecting..."
+msgstr ""
+
+#: Aulay.cpp:641 Aulay.cpp:1499 Aulay.cpp:1503 Aulay.cpp:1521
+#: Aulay.cpp:1557
+msgid "Unknown error"
+msgstr ""
+
+#: Aulay.cpp:666 Aulay.cpp:698 Aulay.cpp:2126
+msgid "Searching for Bluetooth audio devices..."
+msgstr ""
+
+#: Aulay.cpp:668 Aulay.cpp:700
+msgid ""
+"No Bluetooth audio devices found.\n"
+"Make sure Bluetooth is turned on and your device is paired."
+msgstr ""
+
+#: Aulay.cpp:696
+msgid "Bluetooth is turned off. Turn it on to discover audio devices."
+msgstr ""
+
+#: Aulay.cpp:1226 Aulay.cpp:1479
+msgid "The connection closed unexpectedly"
+msgstr ""
+
+#: Aulay.cpp:1301
+msgid "Unable to restart Bluetooth"
+msgstr ""
+
+#: Aulay.cpp:1399
+msgid "The device is unavailable"
+msgstr ""
+
+#: Aulay.cpp:1488
+msgid "The request timed out"
+msgstr ""
+
+#: Aulay.cpp:1492
+msgid "The operation was denied by the system"
+msgstr ""
+
+#: SettingsUtil.hpp
+msgid "Settings could not be saved. Check folder access or available disk space."
+msgstr ""
+
+msgid "No sound"
+msgstr ""
+
+msgid "No sound recorded"
+msgstr ""
+
+msgid "Cancel"
+msgstr ""
+
+msgid "Waiting to retry..."
+msgstr ""

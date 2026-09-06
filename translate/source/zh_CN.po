@@ -1,0 +1,157 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR Richard Yu <yurichard3839@gmail.com>
+# This file is distributed under the same license as the Aulay package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Aulay\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-07-22 15:24+0800\n"
+"PO-Revision-Date: 2020-07-06 19:09+0800\n"
+"Last-Translator: Richard Yu <yurichard3839@gmail.com>\n"
+"Language-Team: \n"
+"Language: zh_CN\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Poedit 2.3.1\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: Aulay.cpp:71
+msgid "Unsupported Operating System"
+msgstr "不支持的操作系统"
+
+#: Aulay.cpp:71
+msgid "Aulay is not supported on this operating system version."
+msgstr "此操作系统版本不支持 Aulay。"
+
+#: Aulay.cpp:108 Aulay.cpp:321 Aulay.cpp:343
+msgid "Aulay"
+msgstr ""
+
+#: Aulay.cpp:268
+msgid ""
+"All connections will be closed.\n"
+"Exit anyway?"
+msgstr ""
+"所有连接都将关闭。\n"
+"仍然要退出吗？"
+
+#: Aulay.cpp:273
+msgid "Reconnect on next start"
+msgstr "下次启动时重新连接"
+
+#: Aulay.cpp:276 Aulay.cpp:356
+msgid "Exit"
+msgstr "退出"
+
+#: Aulay.cpp:304
+msgid "Bluetooth Settings"
+msgstr "蓝牙设置"
+
+#: Aulay.cpp:314
+msgid "Copy Diagnostics"
+msgstr "复制诊断信息"
+
+#: Aulay.cpp:324
+msgid "Diagnostic information was copied to the clipboard."
+msgstr "诊断信息已复制到剪贴板。"
+
+#: Aulay.cpp:325
+msgid "Unable to copy diagnostic information."
+msgstr "无法复制诊断信息。"
+
+#: Aulay.cpp:335
+msgid "Open Log Folder"
+msgstr "打开日志文件夹"
+
+#: Aulay.cpp:345
+msgid "Unable to open the log folder."
+msgstr "无法打开日志文件夹。"
+
+#: Aulay.cpp:632
+msgid "Connecting..."
+msgstr "正在连接…"
+
+#: Aulay.cpp:1488
+msgid "The request timed out"
+msgstr "请求超时"
+
+#: Aulay.cpp:1492
+msgid "The operation was denied by the system"
+msgstr "操作被系统拒绝"
+
+#: Aulay.cpp:641 Aulay.cpp:1499 Aulay.cpp:1503 Aulay.cpp:1521
+#: Aulay.cpp:1557
+msgid "Unknown error"
+msgstr "未知错误"
+
+#: Aulay.cpp:635
+msgid "Connected"
+msgstr "已连接"
+
+#: Aulay.cpp:707 Aulay.cpp:715 Aulay.cpp:720 Aulay.cpp:729 Aulay.cpp:829
+#: Aulay.cpp:998
+msgid "Quick Connect"
+msgstr "快速连接"
+
+#: Aulay.cpp:853
+msgid "Force Connect"
+msgstr "强制连接"
+
+#: Aulay.cpp:635 Aulay.cpp:638
+msgid "Disconnect"
+msgstr "断开"
+
+#: Aulay.cpp:638
+msgid "Disconnecting..."
+msgstr "正在断开…"
+
+#: Aulay.cpp:628 Aulay.cpp:661
+msgid "Restarting Bluetooth..."
+msgstr "正在重启蓝牙…"
+
+#: Aulay.cpp:666 Aulay.cpp:698 Aulay.cpp:2126
+msgid "Searching for Bluetooth audio devices..."
+msgstr "正在搜索蓝牙音频设备…"
+
+#: Aulay.cpp:696
+msgid "Bluetooth is turned off. Turn it on to discover audio devices."
+msgstr "蓝牙已关闭。请开启蓝牙以发现音频设备。"
+
+#: Aulay.cpp:668 Aulay.cpp:700
+msgid ""
+"No Bluetooth audio devices found.\n"
+"Make sure Bluetooth is turned on and your device is paired."
+msgstr ""
+"未找到蓝牙音频设备。\n"
+"请确认蓝牙已开启，并且设备已经配对。"
+
+#: Aulay.cpp:1226 Aulay.cpp:1479
+msgid "The connection closed unexpectedly"
+msgstr "连接意外关闭"
+
+#: Aulay.cpp:1399
+msgid "The device is unavailable"
+msgstr "设备当前不可用"
+
+#: Aulay.cpp:1301
+msgid "Unable to restart Bluetooth"
+msgstr "无法重启蓝牙"
+
+#: SettingsUtil.hpp
+msgid "Settings could not be saved. Check folder access or available disk space."
+msgstr "设置保存失败。请检查文件夹访问权限或磁盘剩余空间。"
+
+msgid "No sound"
+msgstr "无声"
+
+msgid "No sound recorded"
+msgstr "已记录无声"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Waiting to retry..."
+msgstr "等待重试…"

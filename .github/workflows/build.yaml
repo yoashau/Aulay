@@ -1,0 +1,117 @@
+name: Build
+
+on:
+  push:
+    branches: [ master ]
+    tags: [ '**' ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Project and portable regression tests
+      run: python3 tests/run_tests.py
+
+  build:
+    needs: test
+    # Match the project's v143 toolset, including ARM and ARM64 components.
+    runs-on: windows-2022
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Add msbuild to PATH
+      uses: microsoft/setup-msbuild@v2
+      with:
+        vs-version: '[17.0,18.0)'
+
+    - uses: nuget/setup-nuget@v2
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - name: Generate translation resources
+      run: |
+        cd translate
+        pip install -r requirements.txt
+        sh gen_rc.sh
+      shell: bash
+
+    - run: nuget restore Aulay.sln
+
+    - name: Build x64
+      run: msbuild Aulay.sln "-p:Configuration=Release;Platform=x64"
+
+    - name: Native Windows fault regression tests
+      shell: cmd
+      run: |
+        "%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -version "[17.0,18.0)" -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath > "%TEMP%\aulay-vs-path.txt"
+        set /p VS_PATH=<"%TEMP%\aulay-vs-path.txt"
+        call "%VS_PATH%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
+        if not "%ERRORLEVEL%"=="0" exit /b 1
+        call tests\run_windows_tests.cmd
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: Aulay-x64
+        path: x64/Release/Aulay64.exe
+
+    - name: Native diagnostic monitor tests
+      shell: cmd
+      run: |
+        set /p VS_PATH=<"%TEMP%\aulay-vs-path.txt"
+        call "%VS_PATH%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
+        if not "%ERRORLEVEL%"=="0" exit /b 1
+        call tests\run_debug_audio_test.cmd
+        if not "%ERRORLEVEL%"=="0" exit /b 1
+        call tests\run_debug_monitor_test.cmd
+
+
+    - name: Build x86
+      if: startsWith(github.ref, 'refs/tags/')
+      run: msbuild Aulay.sln "-p:Configuration=Release;Platform=x86"
+
+    - name: Build ARM64
+      if: startsWith(github.ref, 'refs/tags/')
+      run: msbuild Aulay.sln "-p:Configuration=Release;Platform=ARM64"
+
+    - name: Build ARM
+      if: startsWith(github.ref, 'refs/tags/')
+      run: msbuild Aulay.sln "-p:Configuration=Release;Platform=ARM"
+
+    - uses: actions/upload-artifact@v4
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        name: Aulay-x86
+        path: Release/Aulay32.exe
+
+    - uses: actions/upload-artifact@v4
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        name: Aulay-ARM64
+        path: ARM64/Release/AulayARM64.exe
+
+    - uses: actions/upload-artifact@v4
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        name: Aulay-ARM
+        path: ARM/Release/AulayARM.exe
+
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        draft: true
+        fail_on_unmatched_files: true
+        files: |
+          x64/Release/Aulay64.exe
+          Release/Aulay32.exe
+          ARM64/Release/AulayARM64.exe
+          ARM/Release/AulayARM.exe

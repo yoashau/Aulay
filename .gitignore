@@ -1,0 +1,52 @@
+# Visual Studio user state
+.vs/
+*.user
+*.suo
+*.sln.docstates
+*.VC.db
+*.VC.VC.opendb
+
+# Build outputs and restored NuGet dependencies
+x64/
+x86/
+ARM/
+ARM64/
+Win32/
+Debug/
+Release/
+packages/
+Generated Files/
+*.obj
+*.pch
+*.pdb
+*.idb
+*.ilk
+*.ipdb
+*.iobj
+*.tlog
+*.lastbuildstate
+*.aps
+*.res
+*.log
+*.binlog
+
+# Python tooling
+__pycache__/
+*.py[cod]
+.venv/
+
+# Compiled translations; the resource declaration is a source input
+translate/generated/*
+!translate/generated/translate.rc
+
+# Per-installation settings and runtime logs
+Aulay.json
+Aulay.json.tmp
+Logs/
+DebugLogs/
+
+# Windows download metadata
+*:Zone.Identifier
+
+# Packaged releases
+dist/

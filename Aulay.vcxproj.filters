@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="targetver.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Version.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="BuildVariant.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="DebugAudioDiagnostics.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="DebugAudioMonitor.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="Aulay.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Diagnostics.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="I18n.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="FnvHash.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="AsyncUtil.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="AudioFlowRecovery.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="AppModules.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="ConnectionState.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="DeviceListUi.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="BluetoothRecovery.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="ConnectionFlow.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="DeviceWatcher.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="TrayPanel.hpp"><Filter>Header Files</Filter></ClInclude>
+
+    <ClInclude Include="AudioFlowPolicy.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="BluetoothRouting.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pch.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="resource.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="SettingsUtil.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Util.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Aulay.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pch.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Aulay.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
+    <ResourceCompile Include="translate\generated\translate.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="Aulay.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <Manifest Include="Aulay.manifest">
+      <Filter>Resource Files</Filter>
+    </Manifest>
+  </ItemGroup>
+  <ItemGroup><ClInclude Include="ConnectionTiming.hpp"><Filter>Header Files</Filter></ClInclude></ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="BackgroundLog.hpp" />
+    <ClInclude Include="DiagnosticSampling.hpp" />
+  </ItemGroup>
+</Project>

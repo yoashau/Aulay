@@ -57,7 +57,7 @@ struct Session {
 };
 struct ConnectionRequest { std::wstring deviceId; };
 struct App {
-    struct { void SetEvent() {} } connectionQueueChanged;
+    struct { void SetEvent() {} } connectionQueueChanged, deviceChanged;
     std::unordered_map<std::wstring, Session> sessions;
     std::unordered_map<std::wstring,uint64_t> connectGenerations;
     std::deque<ConnectionRequest> connectionQueue;

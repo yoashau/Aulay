@@ -155,3 +155,21 @@ msgstr "取消"
 
 msgid "Waiting to retry..."
 msgstr "等待重试…"
+
+msgid "The previous connection is still finishing. Please wait or try again later."
+msgstr "上一次连接操作尚未结束，请稍候或稍后重试。"
+
+msgid "Bluetooth access was denied. Check Windows Bluetooth permissions before retrying."
+msgstr "蓝牙操作被拒绝，请检查 Windows 蓝牙权限后重试。"
+
+msgid "Unable to prepare Bluetooth. If retries fail, click Quick Connect to try again."
+msgstr "蓝牙准备失败。如果自动重试仍失败，请点击“快速连接”重试。"
+
+msgid "Check that Bluetooth is on on your phone and that the phone is nearby."
+msgstr "请确认手机蓝牙已开启，并将手机放在电脑附近。"
+
+msgid "Restart the computer's Bluetooth connection to recover missing sound."
+msgstr "重启电脑端蓝牙连接，尝试恢复声音。"
+
+msgid "Restart the computer's Bluetooth adapter and reconnect. This cannot turn on Bluetooth on your phone."
+msgstr "重启电脑端蓝牙适配器并重新连接，无法替你开启手机蓝牙。"

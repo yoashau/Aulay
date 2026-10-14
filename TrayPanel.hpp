@@ -360,15 +360,20 @@ void SetupDeviceList()
 
 void SetupTrayIcon()
 {
-	const int width = GetSystemMetrics(SM_CXSMICON), height = GetSystemMetrics(SM_CYSMICON);
-	g_hTrayIcon = static_cast<HICON>(LoadImageW(
+	// The hidden XAML host may be on a different monitor from the taskbar.
+	auto taskbar = FindWindowW(L"Shell_TrayWnd", nullptr);
+	auto dpi = GetDpiForWindow(taskbar ? taskbar : g_hWnd);
+	const int width = GetSystemMetricsForDpi(SM_CXSMICON, dpi), height = GetSystemMetricsForDpi(SM_CYSMICON, dpi);
+	HICON icon = nullptr;
+	winrt::check_hresult(LoadIconWithScaleDown(
 		g_hInst,
 		MAKEINTRESOURCEW(IDI_AULAY_TRAY),
-		IMAGE_ICON,
 		width,
 		height,
-		LR_DEFAULTCOLOR));
-	FAIL_FAST_LAST_ERROR_IF_NULL(g_hTrayIcon);
+		&icon));
+	if (g_hTrayIcon)
+		DestroyIcon(g_hTrayIcon);
+	g_hTrayIcon = icon;
 }
 
 void UpdateNotifyIcon()

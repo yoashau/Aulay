@@ -3,6 +3,7 @@
 from pathlib import Path
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -29,6 +30,9 @@ def main():
     filters = inventory(ET.parse(ROOT / 'Aulay.vcxproj.filters'))
     rc_bytes = (ROOT / 'Aulay.rc').read_bytes()
     rc = rc_bytes.decode('utf-16')
+    icon = (ROOT / 'Aulay.ico').read_bytes()
+    reserved, kind, count = struct.unpack_from('<HHH', icon)
+    icon_sizes = {(icon[6 + i * 16] or 256, icon[7 + i * 16] or 256) for i in range(count)}
     version = read('Version.h')
     number = re.search(r'^#define AULAY_VERSION_NUMBER ([0-9,]+)$', version, re.M)
     text = re.search(r'^#define AULAY_VERSION_TEXT "([0-9.]+)"$', version, re.M)
@@ -53,12 +57,14 @@ def main():
         'tested x64 artifact is uploaded before other architectures': workflow.index('name: Aulay-x64')
             < workflow.index('name: Build ARM64'),
         'native tests use SDK WinRT headers rather than generated package headers': all('Generated Files' not in read('tests/' + name) for name in native_scripts),
-        'native tests use standard C++20 coroutines': len(native_commands) == 5 and all(
+        'native tests use standard C++20 coroutines': len(native_commands) == 6 and all(
             '/std:c++20' in line.split() and not any(option.startswith('/await') for option in line.split())
             for line in native_commands),
         'project references existing source files': all((ROOT / f.replace('\\', '/')).is_file() for _, f in items),
         'project and IDE filters match': items == filters,
         'one application icon asset': {f for tag, f in items if tag == 'Image'} == {'Aulay.ico'},
+        'icon includes native tray and high-DPI sizes': reserved == 0 and kind == 1
+            and {(s, s) for s in (16, 20, 24, 28, 32, 40, 48, 64, 96, 128, 256)} <= icon_sizes,
         'normal intermediate directory is explicit': normal_dirs == ['$(Platform)\\$(Configuration)\\obj\\'],
         'single build variant': 'AulayDiagnostic' not in read('Aulay.vcxproj') and 'Aulay-Debug-x64' not in workflow,
         'assembly identifies Aulay': assembly is not None and assembly.get('name') == 'Aulay',

@@ -81,7 +81,7 @@ winrt::Windows::Foundation::IAsyncOperation<bool> WaitForRadioState(
 	(void)stateChangedRevoker;
 
 	if (radio.State() == targetState)
-		stateChanged->SetEvent();
+		co_return true;
 
 	// Register an asynchronous kernel wait instead of occupying a worker thread.
 	auto signaled = co_await winrt::resume_on_signal(stateChanged->get(), timeout);
@@ -244,7 +244,7 @@ winrt::Windows::Foundation::IAsyncOperation<int32_t> EnsureBluetoothReady(
 		CheckAsyncDeadline(deadline, cancellation);
 		if (allowActiveSessionReset) {
 			// Revoke old sessions before requesting Off. Otherwise delayed Closed
-			// callbacks can arrive after recovery and trigger a second adapter reset.
+			// callbacks must not suspend a new explicitly requested connection.
 			std::vector<std::wstring> activeIds;
 			for (const auto& item : g_app.sessions)
 				if (item.second.phase == ConnectionPhase::Connected)
@@ -275,6 +275,10 @@ winrt::Windows::Foundation::IAsyncOperation<int32_t> EnsureBluetoothReady(
 	co_await winrt::resume_foreground(dispatcher);
 	g_app.bluetooth.lastResult = result;
 	g_app.bluetooth.lastSucceeded = result == BluetoothRecoveryResult::Success;
+	if (g_app.bluetooth.lastSucceeded) {
+		g_app.deferredBluetoothRecovery.erase(deviceId);
+		g_app.preparedDevices.insert(deviceId);
+	}
 	g_app.bluetooth.needed = result != BluetoothRecoveryResult::Success;
 	g_app.bluetooth.stage = g_app.bluetooth.lastSucceeded
 		? BluetoothRecoveryStage::Succeeded

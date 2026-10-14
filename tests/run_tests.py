@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 TESTS = (
     'test_project_layout.py',
     'test_regressions.py',
+    'test_remote_disconnect.py',
     'test_audio_flow.py',
     'test_diagnostic_overhead.py',
     'test_hardening.py',

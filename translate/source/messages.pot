@@ -150,3 +150,21 @@ msgstr ""
 
 msgid "Waiting to retry..."
 msgstr ""
+
+msgid "The previous connection is still finishing. Please wait or try again later."
+msgstr ""
+
+msgid "Bluetooth access was denied. Check Windows Bluetooth permissions before retrying."
+msgstr ""
+
+msgid "Unable to prepare Bluetooth. If retries fail, click Quick Connect to try again."
+msgstr ""
+
+msgid "Check that Bluetooth is on on your phone and that the phone is nearby."
+msgstr ""
+
+msgid "Restart the computer's Bluetooth connection to recover missing sound."
+msgstr ""
+
+msgid "Restart the computer's Bluetooth adapter and reconnect. This cannot turn on Bluetooth on your phone."
+msgstr ""

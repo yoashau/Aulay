@@ -19,16 +19,23 @@ enum class Decision { Wait,
 	Unknown,
 	Cancelled,
 	Recover,
-	AlreadyAttempted };
+	AlreadyAttempted,
+	Deferred };
 // Per-session, single-worker policy. Zero amplitude is deliberately not an input:
 // packets containing digital silence still prove that the pipeline supplies frames.
 class RecoveryPolicy {
 public:
-	static constexpr std::uint64_t noFramesMs = 4000;
-	static constexpr std::uint64_t maxObservationGapMs = 1000;
+	// Count only continuous observations of a fully ready capture pipeline.
+	static constexpr std::uint64_t noFramesMs = 500;
+	static constexpr std::uint64_t maxObservationGapMs = 250;
+	explicit RecoveryPolicy(bool authorized = false) noexcept
+		: authorized_(authorized)
+	{
+	}
 	Decision Observe(const Observation& o) noexcept
 	{
 		if (o.cancelled || !o.currentSession || !o.opened) {
+			disarmed_ = true;
 			pending_ = false;
 			return Decision::Cancelled;
 		}
@@ -37,6 +44,7 @@ public:
 			return Decision::Unknown;
 		}
 		if (!o.jackConnected) {
+			disarmed_ = true;
 			pending_ = false;
 			return Decision::Paused;
 		}
@@ -45,8 +53,13 @@ public:
 			return Decision::Unknown;
 		}
 		if (o.frames != 0) {
+			disarmed_ = true; // First delivery ends startup repair authorization.
 			pending_ = false;
 			return Decision::Healthy;
+		}
+		if (!authorized_ || disarmed_) {
+			pending_ = false;
+			return Decision::Deferred;
 		}
 		if (attempted_)
 			return Decision::AlreadyAttempted;
@@ -63,6 +76,7 @@ public:
 	}
 
 private:
+	bool authorized_ = false, disarmed_ = false;
 	bool pending_ = false;
 	bool attempted_ = false;
 	std::uint64_t began_ = 0, last_ = 0;

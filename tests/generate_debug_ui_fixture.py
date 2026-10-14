@@ -79,7 +79,7 @@ winrt::fire_and_forget RunDebugUiFixture()
 		require(g_app.sessions.at(id).noSoundReports == 2 && g_app.sessions.at(id).phase == ConnectionPhase::Connected);
 		require(!g_app.bluetooth.inProgress && g_app.connectionQueue.empty() && fixtureForcedRequests==2);
         // Recovery state must not block hiding/reopening the panel.
-        g_app.unexpectedDisconnectRecoveryPending=true;
+        g_app.bluetooth.inProgress=true;
         for(auto const& row:g_deviceRows)ApplySessionStatusToRow(row.first);
         g_xamlDeviceFlyout.Hide();
         co_await winrt::resume_after(std::chrono::milliseconds(100));
@@ -96,7 +96,7 @@ winrt::fire_and_forget RunDebugUiFixture()
         co_await winrt::resume_after(std::chrono::milliseconds(100));
         co_await winrt::resume_foreground(dispatcher);
         require(g_app.deviceFlyoutVisible);
-        g_app.unexpectedDisconnectRecoveryPending=false;
+        g_app.bluetooth.inProgress=false;
         ApplySessionStatusToRow(id);
         RecordDiagnostic(L"ui-test",L"UI_RECOVERY_TRAY PASS: open/close/reopen during recovery, live-radio-writes=0");
 		for (int i = 0; i < 100 && PendingDebugAudioSnapshots() != 0; ++i)

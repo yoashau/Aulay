@@ -17,11 +17,6 @@ std::unordered_map<std::wstring, DeviceInformation> g_discoveredDevices;
 
 // UI owns this map; workers only own their independent state and COM objects.
 std::unordered_map<std::wstring, std::shared_ptr<AudioFlow::State>> g_audioFlowTasks;
-bool AudioFlowTasksFinished()
-{
-	return std::all_of(g_audioFlowTasks.begin(), g_audioFlowTasks.end(),
-		[](auto const& item) { return item.second->done.load(); });
-}
 
 constexpr double DEVICE_LIST_WIDTH = 264.0;
 constexpr double DEVICE_ACTION_BUTTON_WIDTH = 104.0;
@@ -92,7 +87,7 @@ size_t ConnectionQueuePosition(std::wstring const& deviceId)
 
 void ApplySessionStatusToRow(std::wstring const& deviceId)
 {
-	if ((g_app.unexpectedDisconnectRecoveryPending || g_app.bluetooth.inProgress) && deviceId == g_app.bluetooth.deviceId) {
+	if (g_app.bluetooth.inProgress && deviceId == g_app.bluetooth.deviceId) {
 		// Only the device that owns the adapter reset reports the restart;
 		// every other row keeps its real state and stays actionable. Cancel
 		// opts out of the follow-up reconnect without stopping the radio
@@ -122,6 +117,7 @@ void ApplySessionStatusToRow(std::wstring const& deviceId)
 			error == g_app.deviceErrors.end() ? std::wstring {} : FormatDeviceError(error->second),
 			_(L"Quick Connect"),
 			true);
+		UpdateTrayTooltip();
 		return;
 	}
 
@@ -332,7 +328,7 @@ void RemoveDeviceRow(std::wstring const& deviceId)
 	// Keep an actionable row while a session is opening or connected. A watcher
 	// removal can be transient during radio churn; reconciliation removes the row
 	// after the session has actually ended if the device is still absent.
-	if (g_app.sessions.count(deviceId) != 0 || IsConnectionQueued(deviceId) || g_app.unexpectedDisconnectRecoveryPending)
+	if (g_app.sessions.count(deviceId) != 0 || IsConnectionQueued(deviceId))
 		return;
 
 	auto row = g_deviceRows.find(deviceId);
@@ -346,7 +342,7 @@ void RemoveDeviceRow(std::wstring const& deviceId)
 
 	// A genuinely absent remembered device may get a new bounded attempt when it
 	// appears again. A mere reconciliation of an unchanged list must not rearm it.
-	if (g_app.reconnectEnabled && IsDesiredDevice(deviceId))
+	if (g_app.reconnectEnabled && IsDesiredDevice(deviceId) && g_app.suppressedAutoReconnects.count(deviceId) == 0)
 		g_app.pendingAutoReconnects.insert(deviceId);
 	InvalidateBluetoothRoute(deviceId);
 	g_deviceRows.erase(row);
@@ -367,11 +363,15 @@ void UpdateDeviceRowStatus(
 		return;
 
 	row->second.statusText.Text(statusMessage);
+	ToolTipService::SetToolTip(row->second.statusText, statusMessage.empty() ? nullptr : winrt::box_value(std::wstring(statusMessage)));
 	row->second.statusText.Visibility(statusMessage.empty() ? Visibility::Collapsed : Visibility::Visible);
 	row->second.actionButton.Content(winrt::box_value(std::wstring(buttonLabel)));
 	row->second.actionButton.IsEnabled(buttonEnabled);
 	row->second.forceConnectButton.Content(winrt::box_value(showNoSound ? _(L"No sound") : _(L"Force Connect")));
-	ToolTipService::SetToolTip(row->second.forceConnectButton, showNoSound && g_app.sessions.count(deviceId) && g_app.sessions.at(deviceId).noSoundReports ? winrt::box_value(_(L"No sound recorded")) : nullptr);
+	ToolTipService::SetToolTip(row->second.forceConnectButton,
+		showNoSound
+			? winrt::box_value((g_app.sessions.count(deviceId) && g_app.sessions.at(deviceId).noSoundReports ? std::wstring(_(L"No sound recorded")) + L"\n" : std::wstring {}) + _(L"Restart the computer's Bluetooth connection to recover missing sound."))
+			: winrt::box_value(_(L"Restart the computer's Bluetooth adapter and reconnect. This cannot turn on Bluetooth on your phone.")));
 	auto showSecondary = showForceAction || showNoSound;
 	row->second.actionButton.Width(showSecondary ? DEVICE_ACTION_BUTTON_WIDTH : DEVICE_ACTION_ROW_WIDTH);
 	Grid::SetColumnSpan(row->second.actionButton, showSecondary ? 1 : 2);

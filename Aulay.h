@@ -3,6 +3,7 @@
 #include "resource.h"
 #include "BuildVariant.hpp"
 #include "AsyncUtil.hpp"
+#include "ConnectionCreation.hpp"
 #include "ConnectionTiming.hpp"
 #include "BluetoothRouting.hpp"
 #include "AudioFlowRecovery.hpp"
@@ -114,7 +115,6 @@ struct ConnectionSession {
 	winrt::event_token stateChangedToken {};
 	uint64_t generation = 0;
 	uint64_t attemptId = 0;
-	uint32_t retryCount = 0;
 	ConnectionPhase phase = ConnectionPhase::RecoveringBluetooth;
 	std::chrono::steady_clock::time_point connectedAt {};
 	bool hasStateChangedToken = false;
@@ -132,6 +132,10 @@ struct ConnectionRequest {
 	uint32_t retryCount = 0;
 	ConnectionRequestMode mode = ConnectionRequestMode::Automatic;
 	ConnectionRecoveryStrategy recoveryStrategy = ConnectionRecoveryStrategy::Direct;
+	bool recoverAfterRemoteClose = false;
+	bool prepareBeforeConnect = false;
+	uint32_t preparationAttempts = 0;
+	BluetoothRecoveryResult preparationResult = BluetoothRecoveryResult::NotRequired;
 	std::chrono::steady_clock::time_point notBefore {};
 };
 
@@ -155,7 +159,7 @@ struct BluetoothRecoveryCompletion {
 };
 
 struct BluetoothRecoveryState {
-	// A pending explicit or unexpected-disconnect reset, never a startup reset.
+	// A pending explicit reset, never a startup or remote-disconnect reset.
 	bool needed = true;
 	bool inProgress = false;
 	bool lastSucceeded = false;
@@ -185,6 +189,7 @@ struct AppRuntimeState {
 	BluetoothRecoveryState bluetooth;
 	std::optional<winrt::Windows::Devices::Radios::RadioAccessStatus> radioAccess;
 	std::unordered_map<std::wstring, ConnectionSession> sessions;
+	std::unordered_map<std::wstring, std::shared_ptr<ConnectionCreation::State>> connectionCreations;
 	std::unordered_map<std::wstring, uint64_t> connectGenerations;
 	std::unordered_map<std::wstring, DeviceErrorState> deviceErrors;
 	std::deque<ConnectionRequest> connectionQueue;
@@ -194,7 +199,13 @@ struct AppRuntimeState {
 	wil::unique_event stoppingSignal { wil::EventOptions::ManualReset };
 	std::vector<std::wstring> desiredDevices;
 	std::unordered_set<std::wstring> pendingAutoReconnects;
-	bool unexpectedDisconnectRecoveryPending = false;
+	// A remote close may mean the phone selected another output. Keep this
+	// suppression for this run, including watcher removal/reappearance.
+	std::unordered_set<std::wstring> suppressedAutoReconnects;
+	std::unordered_set<std::wstring> deferredBluetoothRecovery;
+	// A new process cannot trust Bluetooth state left behind by its predecessor.
+	// Record actual successful preparation, rather than an Opened notification.
+	std::unordered_set<std::wstring> preparedDevices;
 	bool deviceFlyoutVisible = false;
 	winrt::event_token watcherAddedToken {};
 	winrt::event_token watcherRemovedToken {};

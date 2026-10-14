@@ -15,6 +15,12 @@ cl /nologo /std:c++20 /EHsc /MD /utf-8 /I. /I"packages\Microsoft.Windows.Impleme
 if not "%ERRORLEVEL%"=="0" goto failed
 "%TEST_OUTPUT%\recovery-test.exe"
 if not "%ERRORLEVEL%"=="0" goto failed
+python tests\generate_creation_test.py "%TEST_OUTPUT%\creation-test.cpp"
+if not "%ERRORLEVEL%"=="0" goto failed
+cl /nologo /std:c++20 /EHsc /MD /utf-8 /I. /I"packages\Microsoft.Windows.ImplementationLibrary.1.0.200519.2\include" "%TEST_OUTPUT%\creation-test.cpp" /Fo:"%TEST_OUTPUT%\creation-test.obj" /Fe:"%TEST_OUTPUT%\creation-test.exe" WindowsApp.lib
+if not "%ERRORLEVEL%"=="0" goto failed
+"%TEST_OUTPUT%\creation-test.exe"
+if not "%ERRORLEVEL%"=="0" goto failed
 python tests\generate_settings_test.py "%TEST_OUTPUT%\settings-test.cpp"
 if not "%ERRORLEVEL%"=="0" goto failed
 cl /nologo /std:c++20 /EHsc /MD /utf-8 /I"packages\Microsoft.Windows.ImplementationLibrary.1.0.200519.2\include" "%TEST_OUTPUT%\settings-test.cpp" /Fo:"%TEST_OUTPUT%\settings-test.obj" /Fe:"%TEST_OUTPUT%\settings-test.exe" WindowsApp.lib user32.lib

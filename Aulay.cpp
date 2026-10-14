@@ -54,14 +54,23 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 		return EXIT_FAILURE;
 	}
 
+	HICON appIcon = nullptr, appSmallIcon = nullptr;
+	auto destroyAppIcons = wil::scope_exit([&] {
+		if (appIcon)
+			DestroyIcon(appIcon);
+		if (appSmallIcon)
+			DestroyIcon(appSmallIcon);
+	});
+	winrt::check_hresult(LoadIconMetric(hInstance, MAKEINTRESOURCEW(IDI_AULAY), LIM_LARGE, &appIcon));
+	winrt::check_hresult(LoadIconMetric(hInstance, MAKEINTRESOURCEW(IDI_AULAY), LIM_SMALL, &appSmallIcon));
 	WNDCLASSEXW wcex = {
 		.cbSize = sizeof(wcex),
 		.lpfnWndProc = WndProc,
 		.hInstance = hInstance,
-		.hIcon = LoadIconW(hInstance, MAKEINTRESOURCEW(IDI_AULAY)),
+		.hIcon = appIcon,
 		.hCursor = LoadCursorW(nullptr, IDC_ARROW),
 		.lpszClassName = L"Aulay",
-		.hIconSm = wcex.hIcon
+		.hIconSm = appSmallIcon
 	};
 
 	FAIL_FAST_LAST_ERROR_IF(RegisterClassExW(&wcex) == 0);
@@ -187,8 +196,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_FINISHSHUTDOWN:
 		DestroyWindow(hWnd);
 		return 0;
+	case WM_DPICHANGED:
+	case WM_SETTINGCHANGE:
+	case WM_DISPLAYCHANGE:
+		if (!IsStopping() && g_hTrayIcon) {
+			SetupTrayIcon();
+			UpdateNotifyIcon();
+		}
+		return DefWindowProcW(hWnd, message, wParam, lParam);
 	default:
 		if (!IsStopping() && WM_TASKBAR_CREATED && message == WM_TASKBAR_CREATED) {
+			SetupTrayIcon();
 			UpdateNotifyIcon();
 		}
 		return DefWindowProcW(hWnd, message, wParam, lParam);
@@ -236,10 +254,13 @@ winrt::fire_and_forget FinishShutdownWhenReady()
 		for (;;) {
 			co_await winrt::resume_foreground(dispatcher);
 			g_app.activityChanged.ResetEvent();
-			if (!g_app.bluetooth.inProgress && !g_app.connectionWorkerRunning && !g_app.unexpectedDisconnectRecoveryPending)
+			if (!g_app.bluetooth.inProgress && !g_app.connectionWorkerRunning)
 				break;
 			co_await winrt::resume_on_signal(g_app.activityChanged.get());
 		}
+		// Preferences are frozen after BeginShutdown. Commit the final snapshot
+		// while audio drains, rather than adding its disk latency to exit.
+		auto settingsDrain = FlushPendingSettings();
 		std::vector<std::shared_ptr<AudioFlow::State>> tasks;
 		for (auto const& item : g_audioFlowTasks)
 			tasks.push_back(item.second);
@@ -260,7 +281,7 @@ winrt::fire_and_forget FinishShutdownWhenReady()
 		co_await WaitDebugAudioMonitorFinished(); // completion event, bounded at 5s
 		co_await winrt::resume_foreground(dispatcher);
 		RecordDiagnostic(L"diagnostics", std::wstring(DebugAudioMonitorFinished() ? L"audio-monitor finished " : L"audio-monitor shutdown-timeout-ms=5000 pending-capture-may-be-truncated ") + DebugAudioMonitorStatus());
-		co_await FlushPendingSettings();
+		co_await settingsDrain;
 		co_await winrt::resume_foreground(dispatcher);
 		PostMessageW(g_hWnd, WM_FINISHSHUTDOWN, 0, 0);
 	} catch (...) {
@@ -312,7 +333,6 @@ void ShutdownApplication()
 	g_discoveredDevices.clear();
 	g_app.sessions.clear();
 	g_app.deviceErrors.clear();
-	g_app.unexpectedDisconnectRecoveryPending = false;
 	g_app.activityChanged.SetEvent();
 	RecordDiagnostic(L"lifecycle", L"shutdown complete");
 	CloseDiagnostics();

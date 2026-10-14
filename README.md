@@ -13,12 +13,12 @@ A lightweight Windows tray utility that lets your PC play audio sent by a paired
 ## Features
 
 - **Tray device list** — every discoverable A2DP source with live status and one-click actions.
-- **Quick Connect** — opens the A2DP sink link without touching the adapter.
+- **Quick Connect** — prepares the device once on its first connection in each run, then opens the A2DP sink link directly in normal use; after a remote close, the next explicit reconnect cleans stale state once before opening the link.
 - **Disconnect** — cancels pending work, forgets the reconnect preference and closes the link.
-- **Force Connect** — resets the associated Bluetooth adapter first, then connects; retries never repeat the reset.
+- **Force Connect** — resets the associated Bluetooth adapter first, then connects; a failed preparation may retry once; connection retries never repeat a successful reset.
 - **No sound** — records a diagnostic marker with an audio-timeline snapshot, then reconnects through the forced path.
 - **Cancel** — available while connecting or while waiting for a retry.
-- **Auto reconnect** — an unexpected disconnect of an established link triggers adapter-reset recovery, then automatic reconnection when enabled. The switch is the check box in the exit-confirmation flyout, and it also controls startup reconnect. Retries back off from 200 ms to a 300 s cap and continue until success, cancellation or exit.
+- **Reconnect on next start** — reconnects remembered devices at startup when enabled. A remote close pauses automatic reconnection for that device until you click Quick Connect / Force Connect or restart the app, so selecting headphones on the phone does not reclaim playback. Startup reconnect and explicit initial connections verify frame delivery and may repair its endpoint once after 0.5 s of continuous missing frames from a ready capture pipeline; verification ends after the first frames, a pause/close or its deadline. Remote closes defer Bluetooth cleanup: the next explicit Quick Connect performs one reset before opening if no other audio session is active. Transient Bluetooth preparation failures retry once, while permission denial or two failed preparations stop the request. After preparation, connection retries back off from 200 ms to a 300 s cap until success, cancellation or exit. Creation has an interruptible deadline; late results close in the background, without overlapping creation for the same device.
 - **Stateful tray tooltip** — connected devices, connecting or recovery at a glance.
 - **Single instance** — launching a second copy shows a notice instead of duplicating the tray icon.
 
@@ -43,7 +43,7 @@ C++20, single translation unit: Win32 for the tray host, C++/WinRT XAML islands 
 | `DeviceWatcher.hpp` | Device watcher lifecycle, restart backoff, list reconciliation |
 | `TrayPanel.hpp` | Tray icon, device flyout with outside-click dismissal hooks, menus |
 
-Supporting headers: `SettingsUtil.hpp` (atomic `Aulay.json` settings with a LocalAppData fallback store), `Diagnostics.hpp` / `DebugAudioMonitor.hpp` / `BackgroundLog.hpp` (bounded background logging), `AudioFlowPolicy.hpp` / `AudioFlowRecovery.hpp` (frame-flow recovery worker), `BluetoothRouting.hpp` (PnP-based adapter routing), `AsyncUtil.hpp` / `ConnectionTiming.hpp` (deadline and cancellation primitives), `I18n.hpp` (translations), `BuildVariant.hpp` (product identity).
+Supporting headers: `SettingsUtil.hpp` (atomic `Aulay.json` settings with a LocalAppData fallback store), `Diagnostics.hpp` / `DebugAudioMonitor.hpp` / `BackgroundLog.hpp` (bounded background logging), `AudioFlowPolicy.hpp` / `AudioFlowRecovery.hpp` (authorized initial frame verification and endpoint cleanup), `BluetoothRouting.hpp` (PnP-based adapter routing), `AsyncUtil.hpp` / `ConnectionTiming.hpp` (deadline and cancellation primitives), `I18n.hpp` (translations), `BuildVariant.hpp` (product identity).
 
 ## Known limitations
 

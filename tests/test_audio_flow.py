@@ -17,9 +17,15 @@ guards = [
     'if (!selected.empty())' in helper and 'return {}; // ambiguous mapping is not permission to guess' in helper,
     'SetDefaultEndpoint(' not in helper.split('inline HRESULT Cycle', 1)[1],
     's->cleanupResult = error' in helper,
+    'noFramesMs + 10000' in helper and 'decision == aulay::flow::Decision::Healthy' in helper,
+    helper.count('!ConnectionOpened(s)') == 2 and helper.count('GetTickCount64() >= s.recoveryDeadline') == 2,
+    'AUDCLNT_STREAMFLAGS_EVENTCALLBACK' in helper and 'client->SetEventHandle(ready.get())' in helper,
+    'WaitForMultipleObjects(capture.eventDriven ? 3 : 2' in helper and 'nextResolve = nextCapture = 0;' in helper,
+    'tick = GetTickCount64();\n\t\t\tauto decision = policy.Observe' in helper,
+    'state != DEVICE_STATE_ACTIVE || FAILED(Jack(device.Get(), connected)) || !connected' in helper,
 ]
 assert all(guards), guards
-print('FLOW_INTEGRATION_GUARDS 5/5 passed')
+print('FLOW_INTEGRATION_GUARDS 11/11 passed')
 
 app=''.join((root/name).read_text(encoding='utf-8-sig') for name in ('Aulay.cpp', 'AppModules.hpp', 'ConnectionState.hpp', 'SettingsSave.hpp', 'DeviceListUi.hpp', 'BluetoothRecovery.hpp', 'ConnectionFlow.hpp', 'DeviceWatcher.hpp', 'TrayPanel.hpp'))
 assert 'CONNECTION_MAX_TRIES' not in app and 'retryBudgetMs' not in app

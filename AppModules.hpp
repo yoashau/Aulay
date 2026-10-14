@@ -6,7 +6,7 @@
 #include "Aulay.h"
 
 // Session teardown is shared by the connection flow and Bluetooth recovery.
-bool CloseConnectionSession(std::wstring const& deviceId, std::optional<uint64_t> generation, bool markRecoveryNeeded, bool radioWillReset = false);
+bool CloseConnectionSession(std::wstring const& deviceId, std::optional<uint64_t> generation, bool markRecoveryNeeded, bool skipAudioCleanup = false);
 
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 void SetupFlyout();
@@ -43,7 +43,7 @@ Style CreateAcrylicFlyoutStyle(winrt::Windows::UI::Xaml::Interop::TypeName const
 std::optional<Point> GetNotifyIconPosition(HWND hWnd);
 
 winrt::fire_and_forget ProcessConnectionQueue();
-winrt::Windows::Foundation::IAsyncOperation<int32_t> ConnectDeviceAsync(ConnectionRequest request);
+winrt::Windows::Foundation::IAsyncOperation<int32_t> ConnectDeviceAsync(ConnectionRequest& request);
 winrt::Windows::Foundation::IAsyncOperation<int32_t> EnsureBluetoothReady(bool forceRecovery, bool allowActiveSessionReset, std::wstring deviceId,
 	std::shared_ptr<AsyncCancellation> cancellation = {}, AsyncDeadline deadline = (AsyncDeadline::max)());
 winrt::Windows::Foundation::IAsyncAction ReconcileDevicesAsync();

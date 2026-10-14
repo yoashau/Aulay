@@ -18,7 +18,7 @@ constexpr uint32_t RADIO_DEACTIVATION_GRACE_TAIL_MS = 1500;
 
 bool IsBluetoothRecoveryActive()
 {
-	return g_app.unexpectedDisconnectRecoveryPending || g_app.bluetooth.inProgress;
+	return g_app.bluetooth.inProgress;
 }
 
 // A radio turn-off/turn-on transiently deactivates the hidden host window, which
@@ -135,23 +135,6 @@ const wchar_t* RadioAccessStatusName(winrt::Windows::Devices::Radios::RadioAcces
 	}
 }
 
-const wchar_t* RadioStateName(winrt::Windows::Devices::Radios::RadioState state)
-{
-	using winrt::Windows::Devices::Radios::RadioState;
-	switch (state) {
-	case RadioState::Unknown:
-		return L"unknown";
-	case RadioState::On:
-		return L"on";
-	case RadioState::Off:
-		return L"off";
-	case RadioState::Disabled:
-		return L"disabled";
-	default:
-		return L"invalid";
-	}
-}
-
 const wchar_t* ConnectionAttemptResultName(ConnectionAttemptResult result)
 {
 	switch (result) {
@@ -208,9 +191,9 @@ const wchar_t* ConnectionRecoveryStrategyName(ConnectionRecoveryStrategy strateg
 	}
 }
 
-ConnectionRecoveryStrategy SelectInitialRecoveryStrategy(ConnectionRequestMode mode)
+ConnectionRecoveryStrategy SelectInitialRecoveryStrategy(ConnectionRequestMode mode, bool recoverAfterRemoteClose = false, bool prepareBeforeConnect = false)
 {
-	if (mode == ConnectionRequestMode::Forced)
+	if (prepareBeforeConnect || mode == ConnectionRequestMode::Forced || (mode == ConnectionRequestMode::Quick && recoverAfterRemoteClose))
 		return ConnectionRecoveryStrategy::RestartBluetooth;
 
 	return ConnectionRecoveryStrategy::Direct;
@@ -220,10 +203,28 @@ ConnectionRecoveryStrategy SelectRetryRecoveryStrategy(
 	ConnectionRequest const& request,
 	ConnectionAttemptResult result)
 {
-	// Only the explicit Forced initial attempt may reset the adapter.
-	(void)request;
+	// Cleared only after completed preparation or protection of another stream.
 	(void)result;
-	return ConnectionRecoveryStrategy::Direct;
+	return request.recoveryStrategy;
+}
+
+bool CanRetryConnection(ConnectionRequest const& request, ConnectionAttemptResult result)
+{
+	if (result == ConnectionAttemptResult::Success || result == ConnectionAttemptResult::Cancelled || result == ConnectionAttemptResult::DeniedBySystem)
+		return false;
+	if (request.recoveryStrategy != ConnectionRecoveryStrategy::RestartBluetooth)
+		return true;
+	if (request.preparationAttempts >= 2)
+		return false;
+	switch (request.preparationResult) {
+	case BluetoothRecoveryResult::AccessDenied:
+	case BluetoothRecoveryResult::TurnOffDenied:
+	case BluetoothRecoveryResult::TurnOnDenied:
+	case BluetoothRecoveryResult::Cancelled:
+		return false;
+	default:
+		return true;
+	}
 }
 
 const wchar_t* AudioOpenStatusName(AudioPlaybackConnectionOpenResultStatus status)
@@ -359,7 +360,7 @@ bool HasConnectedSessions()
 
 bool HasConnectionActivity()
 {
-	return !g_app.sessions.empty() || !g_app.connectionQueue.empty() || g_app.connectionWorkerRunning || g_app.unexpectedDisconnectRecoveryPending;
+	return !g_app.sessions.empty() || !g_app.connectionQueue.empty() || g_app.connectionWorkerRunning;
 }
 
 bool IsDesiredDevice(std::wstring const& deviceId)

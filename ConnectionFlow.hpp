@@ -54,7 +54,7 @@ winrt::fire_and_forget CloseSessionInBackground(ConnectionSession retired,
 	}
 }
 
-bool CloseConnectionSession(std::wstring const& deviceId, std::optional<uint64_t> generation, bool markRecoveryNeeded, bool radioWillReset)
+bool CloseConnectionSession(std::wstring const& deviceId, std::optional<uint64_t> generation, bool markRecoveryNeeded, bool skipAudioCleanup)
 {
 	auto session = g_app.sessions.find(deviceId);
 	if (session == g_app.sessions.end() || (generation && session->second.generation != *generation))
@@ -67,18 +67,25 @@ bool CloseConnectionSession(std::wstring const& deviceId, std::optional<uint64_t
 		retired.cancellation->Request();
 	if (retired.openedSignal)
 		retired.openedSignal->SetEvent();
-	bool cleanAudio = wasConnected && !IsStopping() && !radioWillReset && !g_app.bluetooth.inProgress && !g_app.unexpectedDisconnectRecoveryPending;
+	bool cleanAudio = wasConnected && !IsStopping() && !skipAudioCleanup && !g_app.bluetooth.inProgress;
 	auto flow = retired.audioFlow;
 	auto oldTask = g_audioFlowTasks.find(deviceId);
 	auto predecessor = oldTask == g_audioFlowTasks.end() ? nullptr : oldTask->second;
 	bool workerStarted = true;
 	if (!flow || flow->done) {
-		try {
-			flow = AudioFlow::Start(deviceId, [id = deviceId, attempt = retired.attemptId](auto const& text) { RecordConnectionDiagnostic(attempt, id, text); }, true, false);
-		} catch (...) {
+		if (!cleanAudio) {
+			// Failed startup and skipped cleanup only need close completion;
+			// do not launch a thread or initialize audio interfaces for them.
 			flow = std::make_shared<AudioFlow::State>();
 			workerStarted = false;
-			RecordConnectionDiagnostic(retired.attemptId, deviceId, L"audio-flow cleanup launch failed");
+		} else {
+			try {
+				flow = AudioFlow::Start(deviceId, [id = deviceId, attempt = retired.attemptId](auto const& text) { RecordConnectionDiagnostic(attempt, id, text); }, true, false);
+			} catch (...) {
+				flow = std::make_shared<AudioFlow::State>();
+				workerStarted = false;
+				RecordConnectionDiagnostic(retired.attemptId, deviceId, L"audio-flow cleanup launch failed");
+			}
 		}
 	}
 	flow->cleanup = cleanAudio;
@@ -117,6 +124,7 @@ void DisconnectDevice(std::wstring const& deviceId)
 		g_app.connectionQueue.end());
 	g_app.pendingAutoReconnects.erase(deviceId);
 	g_app.connectionQueueChanged.SetEvent();
+	g_app.deviceChanged.SetEvent(); // Also wake an in-flight device lookup backoff.
 	ForgetDevice(deviceId);
 	CloseConnectionSession(deviceId, std::nullopt, false);
 	ClearDeviceError(deviceId);
@@ -140,55 +148,6 @@ bool IsCurrentConnectionSession(std::wstring const& deviceId, uint64_t generatio
 	if (session == g_app.sessions.end() || session->second.generation != generation)
 		return false;
 	return !connection || session->second.connection == connection;
-}
-
-winrt::fire_and_forget BeginUnexpectedDisconnectRecovery(
-	std::wstring deviceId,
-	uint64_t attemptId,
-	int64_t connectedDuration)
-{
-	auto dispatcher = g_uiDispatcher;
-	auto generation = g_app.connectGenerations[deviceId];
-	BluetoothRecoveryResult result = BluetoothRecoveryResult::UnexpectedFailure;
-	HRESULT recoveryError = S_OK;
-	try {
-		result = static_cast<BluetoothRecoveryResult>(co_await EnsureBluetoothReady(true, true, deviceId));
-	} catch (...) {
-		recoveryError = static_cast<HRESULT>(winrt::to_hresult());
-		result = BluetoothRecoveryResult::UnexpectedFailure;
-	}
-
-	try {
-		co_await winrt::resume_foreground(dispatcher);
-	} catch (...) {
-		co_return;
-	}
-
-	g_app.unexpectedDisconnectRecoveryPending = false;
-	g_app.activityChanged.SetEvent();
-	RecordConnectionDiagnostic(
-		attemptId,
-		deviceId,
-		L"disconnect=unexpected auto-radio-recovery=" + std::wstring(BluetoothRecoveryResultName(result)) + L" recovery-hr=" + FormatDiagnosticHresult(recoveryError) + L" duration-ms=" + std::to_wstring(connectedDuration));
-
-	if (IsStopping())
-		co_return;
-
-	if (result == BluetoothRecoveryResult::Success)
-		ClearDeviceError(deviceId);
-	else
-		SetDeviceError(deviceId, _(L"Unable to restart Bluetooth"), attemptId);
-
-	for (const auto& row : g_deviceRows)
-		ApplySessionStatusToRow(row.first);
-	if (result == BluetoothRecoveryResult::Success && g_app.connectGenerations[deviceId] == generation && g_app.reconnectEnabled && IsDesiredDevice(deviceId)) {
-		g_app.pendingAutoReconnects.insert(deviceId);
-		auto found = g_discoveredDevices.find(deviceId);
-		if (found != g_discoveredDevices.end())
-			MaybeQueuePendingReconnect(found->second);
-	}
-	ScheduleDeviceReconciliation();
-	RefreshEmptyState();
 }
 
 void HandleConnectionClosed(std::wstring deviceId, uint64_t generation, AudioPlaybackConnection sender)
@@ -229,49 +188,21 @@ void HandleConnectionClosed(std::wstring deviceId, uint64_t generation, AudioPla
 				}
 
 				auto connectedDuration = ElapsedMilliseconds(session->second.connectedAt);
-				if (g_app.unexpectedDisconnectRecoveryPending || g_app.bluetooth.inProgress) {
-					CloseConnectionSession(deviceId, generation, false);
-					ClearDeviceError(deviceId);
-					ApplySessionStatusToRow(deviceId);
-					RecordConnectionDiagnostic(
-						attemptId,
-						deviceId,
-						L"disconnect=recovery-induced auto-radio-recovery=already-running duration-ms=" + std::to_wstring(connectedDuration));
-					return;
+				// Closed does not distinguish a link failure from a phone selecting
+				// another output. Neither case grants permission to reclaim playback.
+				if (!g_app.bluetooth.inProgress) {
+					g_app.suppressedAutoReconnects.insert(deviceId);
+					g_app.deferredBluetoothRecovery.insert(deviceId);
 				}
-
-				// The user-disconnect path revokes this handler before calling Close().
-				// Reaching this branch therefore means that Windows or the remote device
-				// closed an established connection. A targeted link close proved unable
-				// to clear Windows' stale aggregate device state, so deterministically
-				// reset the Bluetooth adapter before the user's next connection.
-				g_app.unexpectedDisconnectRecoveryPending = true;
-				g_app.bluetooth.deviceId = deviceId;
-				g_app.bluetooth.needed = true;
-				g_app.connectionQueue.clear();
-				g_app.connectionQueueChanged.SetEvent();
-				g_app.pendingAutoReconnects.clear();
-				for (auto& item : g_app.connectGenerations)
-					++item.second;
-
-				std::vector<std::wstring> sessionIds;
-				sessionIds.reserve(g_app.sessions.size());
-				for (const auto& item : g_app.sessions)
-					sessionIds.push_back(item.first);
-				for (const auto& sessionId : sessionIds)
-					CloseConnectionSession(sessionId, std::nullopt, false);
-
+				g_app.pendingAutoReconnects.erase(deviceId);
+				CloseConnectionSession(deviceId, generation, false, true);
 				ClearDeviceError(deviceId);
-				for (const auto& row : g_deviceRows)
-					ApplySessionStatusToRow(row.first);
+				ApplySessionStatusToRow(deviceId);
 				RecordConnectionDiagnostic(
 					attemptId,
 					deviceId,
-					L"disconnect=unexpected auto-radio-recovery=started active-sessions-closed=" + std::to_wstring(sessionIds.size()) + L" duration-ms=" + std::to_wstring(connectedDuration));
-				BeginUnexpectedDisconnectRecovery(
-					deviceId,
-					attemptId,
-					connectedDuration);
+					L"disconnect=remote recovery=deferred-until-explicit-connect duration-ms=" + std::to_wstring(connectedDuration));
+				ScheduleDeviceReconciliation();
 			});
 	} catch (...) {
 		if (!IsStopping())
@@ -279,7 +210,9 @@ void HandleConnectionClosed(std::wstring deviceId, uint64_t generation, AudioPla
 	}
 }
 
-winrt::Windows::Foundation::IAsyncOperation<int32_t> ConnectDeviceAsync(ConnectionRequest request)
+// The queue owns request until this awaited operation completes. In-place
+// preparation progress must survive failures before Start/Open and retries.
+winrt::Windows::Foundation::IAsyncOperation<int32_t> ConnectDeviceAsync(ConnectionRequest& request)
 {
 	auto dispatcher = g_uiDispatcher;
 	co_await winrt::resume_foreground(dispatcher);
@@ -291,6 +224,15 @@ winrt::Windows::Foundation::IAsyncOperation<int32_t> ConnectDeviceAsync(Connecti
 	if (deviceId.empty() || IsStopping() || g_app.connectGenerations[deviceId] != request.generation || g_app.sessions.count(deviceId) != 0) {
 		co_return static_cast<int32_t>(ConnectionAttemptResult::Cancelled);
 	}
+	auto existingCreation = g_app.connectionCreations.find(deviceId);
+	if (existingCreation != g_app.connectionCreations.end()) {
+		if (!existingCreation->second->finished) {
+			SetDeviceError(deviceId, _(L"The previous connection is still finishing. Please wait or try again later."), request.attemptId);
+			ApplySessionStatusToRow(deviceId);
+			co_return static_cast<int32_t>(ConnectionAttemptResult::DeviceUnavailable);
+		}
+		g_app.connectionCreations.erase(existingCreation);
+	}
 
 	auto device = request.device;
 	if (device)
@@ -301,7 +243,6 @@ winrt::Windows::Foundation::IAsyncOperation<int32_t> ConnectDeviceAsync(Connecti
 	newSession.device = device;
 	newSession.generation = request.generation;
 	newSession.attemptId = request.attemptId;
-	newSession.retryCount = request.retryCount;
 	newSession.requestMode = request.mode;
 	newSession.phase = request.recoveryStrategy == ConnectionRecoveryStrategy::Direct
 		? ConnectionPhase::Starting
@@ -325,8 +266,10 @@ winrt::Windows::Foundation::IAsyncOperation<int32_t> ConnectDeviceAsync(Connecti
 	}
 	if (previousTask)
 		g_audioFlowTasks.erase(deviceId);
-	if (request.mode != ConnectionRequestMode::Forced || request.retryCount != 0)
-		request.recoveryStrategy = ConnectionRecoveryStrategy::Direct;
+	// Clean stale state before reopening a remotely closed link. Opened can
+	// report success without audio, so waiting for an API failure is insufficient.
+	bool resetRequested = request.recoveryStrategy == ConnectionRecoveryStrategy::RestartBluetooth;
+	bool forcedReset = resetRequested && request.mode == ConnectionRequestMode::Forced && request.preparationAttempts == 0;
 
 	auto recoveryStarted = std::chrono::steady_clock::now();
 	auto recoveryResult = BluetoothRecoveryResult::NotRequired;
@@ -336,10 +279,17 @@ winrt::Windows::Foundation::IAsyncOperation<int32_t> ConnectDeviceAsync(Connecti
 			deviceId,
 			L"Bluetooth recovery skipped for direct connection");
 	} else {
-		auto allowActiveSessionReset = request.mode == ConnectionRequestMode::Forced;
+		auto allowActiveSessionReset = forcedReset;
+		// A previous successful preparation cannot stand in for this requested
+		// reset. If it fails, the next manual request must still prepare again.
+		g_app.preparedDevices.erase(deviceId);
+		++request.preparationAttempts;
 		recoveryResult = static_cast<BluetoothRecoveryResult>(co_await EnsureBluetoothReady(
 			true,
 			allowActiveSessionReset, deviceId, attemptCancellation, attemptDeadline));
+		request.preparationResult = recoveryResult;
+		if (recoveryResult == BluetoothRecoveryResult::Success || recoveryResult == BluetoothRecoveryResult::NotRequired)
+			request.recoveryStrategy = ConnectionRecoveryStrategy::Direct;
 	}
 	co_await winrt::resume_foreground(dispatcher);
 	RecordConnectionDiagnostic(
@@ -355,19 +305,24 @@ winrt::Windows::Foundation::IAsyncOperation<int32_t> ConnectDeviceAsync(Connecti
 
 	if (recoveryResult != BluetoothRecoveryResult::Success && recoveryResult != BluetoothRecoveryResult::NotRequired) {
 		CloseConnectionSession(deviceId, request.generation, false);
-		SetDeviceError(deviceId, _(L"Unable to restart Bluetooth"), request.attemptId);
+		SetDeviceError(deviceId,
+			recoveryResult == BluetoothRecoveryResult::AccessDenied || recoveryResult == BluetoothRecoveryResult::TurnOffDenied || recoveryResult == BluetoothRecoveryResult::TurnOnDenied
+				? _(L"Bluetooth access was denied. Check Windows Bluetooth permissions before retrying.")
+				: _(L"Unable to prepare Bluetooth. If retries fail, click Quick Connect to try again."),
+			request.attemptId);
 		ApplySessionStatusToRow(deviceId);
 		RecordConnectionDiagnostic(
 			request.attemptId,
 			deviceId,
 			L"attempt-complete result=bluetooth-recovery-failed recovery-result=" + std::wstring(BluetoothRecoveryResultName(recoveryResult)) + L" duration-ms=" + std::to_wstring(ElapsedMilliseconds(attemptStarted)));
-		co_return static_cast<int32_t>(ConnectionAttemptResult::BluetoothRecoveryFailed);
+		co_return static_cast<int32_t>(recoveryResult == BluetoothRecoveryResult::Cancelled ? ConnectionAttemptResult::Cancelled : ConnectionAttemptResult::BluetoothRecoveryFailed);
 	}
 
 	// A radio power cycle invalidates the device-interface snapshot that initiated
 	// the attempt. Resolve it again before TryCreateFromId so the retry never relies
-	// on a stale watcher object.
-	if (!device || recoveryResult == BluetoothRecoveryResult::Success || request.recoveryStrategy == ConnectionRecoveryStrategy::RestartBluetooth) {
+	// on a stale watcher object. Skipping recovery to protect another stream does
+	// not invalidate an existing snapshot.
+	if (!device || recoveryResult == BluetoothRecoveryResult::Success) {
 		auto lookupStarted = std::chrono::steady_clock::now();
 		RecordConnectionDiagnostic(request.attemptId, deviceId, L"device re-resolution requested");
 		auto previousSnapshot = device;
@@ -434,15 +389,18 @@ winrt::Windows::Foundation::IAsyncOperation<int32_t> ConnectDeviceAsync(Connecti
 
 	try {
 		auto createStarted = std::chrono::steady_clock::now();
-		co_await winrt::resume_background();
-		currentConnection = AudioPlaybackConnection::TryCreateFromId(deviceId);
+		CheckAsyncDeadline(attemptDeadline, attemptCancellation);
+		auto creation = ConnectionCreation::Start(deviceId);
+		g_app.connectionCreations[deviceId] = creation;
+		auto abandonCreation = wil::scope_exit([creation] { ConnectionCreation::Abandon(*creation); });
+		co_await AwaitBounded(ConnectionCreation::WaitReady(creation), attemptDeadline, attemptCancellation);
 		co_await winrt::resume_foreground(dispatcher);
 		if (!IsCurrentConnectionSession(deviceId, request.generation) || IsStopping()) {
-			co_await winrt::resume_background();
-			if (currentConnection)
-				currentConnection.Close();
 			co_return static_cast<int32_t>(ConnectionAttemptResult::Cancelled);
 		}
+		CheckAsyncDeadline(attemptDeadline, attemptCancellation);
+		currentConnection = ConnectionCreation::Take(*creation);
+		abandonCreation.release();
 		RecordConnectionDiagnostic(
 			request.attemptId,
 			deviceId,
@@ -567,7 +525,7 @@ winrt::Windows::Foundation::IAsyncOperation<int32_t> ConnectDeviceAsync(Connecti
 				}
 
 				// OpenAsync/Opened confirms the link, not delivery of audio frames.
-				// The independent flow worker verifies supply without delaying success.
+				// Explicit initial connects verify frame supply without delaying success.
 				result = ConnectionAttemptResult::Success;
 				break;
 			}
@@ -598,7 +556,11 @@ winrt::Windows::Foundation::IAsyncOperation<int32_t> ConnectDeviceAsync(Connecti
 			result = ConnectionAttemptResult::DeadlineExceeded;
 		else if (value == HRESULT_FROM_WIN32(ERROR_CANCELLED) || value == E_ABORT)
 			result = ConnectionAttemptResult::Cancelled;
-		errorMessage = FormatUserErrorMessage(value);
+		else if (value == E_ACCESSDENIED)
+			result = ConnectionAttemptResult::DeniedBySystem;
+		errorMessage = result == ConnectionAttemptResult::DeniedBySystem
+			? std::wstring(_(L"The operation was denied by the system")) + L" (" + FormatDiagnosticHresult(value) + L")"
+			: FormatUserErrorMessage(value);
 		RecordConnectionDiagnostic(
 			request.attemptId,
 			deviceId,
@@ -641,16 +603,20 @@ winrt::Windows::Foundation::IAsyncOperation<int32_t> ConnectDeviceAsync(Connecti
 		auto currentSession = g_app.sessions.find(deviceId);
 		currentSession->second.phase = ConnectionPhase::Connected;
 		currentSession->second.connectedAt = std::chrono::steady_clock::now();
-		try {
-			auto id = deviceId;
-			auto attempt = request.attemptId;
-			auto task = AudioFlow::Start(id, [id, attempt](auto const& text) { RecordConnectionDiagnostic(attempt, id, text); });
-			currentSession->second.audioFlow = task;
-			g_audioFlowTasks[id] = task;
-		} catch (...) {
-			RecordConnectionDiagnostic(request.attemptId, deviceId, L"audio-flow monitor launch failed");
+		// Startup reconnect follows the saved user preference and needs the same
+		// initial verification as a click. This authorization ends on
+		// first frames, a pause/close, or its deadline. It is not a playback watchdog.
+		if (request.mode != ConnectionRequestMode::Automatic || request.prepareBeforeConnect) {
+			try {
+				auto id = deviceId;
+				auto attempt = request.attemptId;
+				auto task = AudioFlow::Start(id, [id, attempt](auto const& text) { RecordConnectionDiagnostic(attempt, id, text); }, false, true, [connection = currentConnection] { return connection.State() == AudioPlaybackConnectionState::Opened; });
+				currentSession->second.audioFlow = task;
+				g_audioFlowTasks[id] = task;
+			} catch (...) {
+				RecordConnectionDiagnostic(request.attemptId, deviceId, L"audio-flow verification launch failed");
+			}
 		}
-
 		g_app.bluetooth.needed = false;
 		ClearDeviceError(deviceId);
 		RememberDevice(deviceId);
@@ -667,6 +633,8 @@ winrt::Windows::Foundation::IAsyncOperation<int32_t> ConnectDeviceAsync(Connecti
 
 	if (errorMessage.empty())
 		errorMessage = _(L"Unknown error");
+	if (result == ConnectionAttemptResult::DeviceUnavailable || result == ConnectionAttemptResult::OpenTimedOut || result == ConnectionAttemptResult::OpenFailed)
+		errorMessage += std::wstring(L" ") + _(L"Check that Bluetooth is on on your phone and that the phone is nearby.");
 	CloseConnectionSession(deviceId, request.generation, false);
 	g_app.bluetooth.needed = true;
 	SetDeviceError(deviceId, std::move(errorMessage), request.attemptId);
@@ -686,11 +654,6 @@ bool IsConnectionQueued(std::wstring const& deviceId)
 		!= g_app.connectionQueue.end();
 }
 
-bool IsRetryableConnectionResult(ConnectionAttemptResult result)
-{
-	return result != ConnectionAttemptResult::Success && result != ConnectionAttemptResult::Cancelled;
-}
-
 void QueueConnectionInternal(
 	std::wstring const& deviceId,
 	DeviceInformation device,
@@ -699,20 +662,27 @@ void QueueConnectionInternal(
 	std::optional<uint64_t> existingGeneration = std::nullopt,
 	std::optional<uint64_t> existingAttemptId = std::nullopt,
 	std::optional<ConnectionRecoveryStrategy> recoveryStrategy = std::nullopt,
-	std::chrono::steady_clock::time_point notBefore = {})
+	std::chrono::steady_clock::time_point notBefore = {},
+	bool recoverAfterRemoteClose = false,
+	bool prepareBeforeConnect = false,
+	uint32_t preparationAttempts = 0,
+	BluetoothRecoveryResult preparationResult = BluetoothRecoveryResult::NotRequired)
 {
 	if (deviceId.empty() || IsStopping())
 		return;
+	if (mode == ConnectionRequestMode::Automatic && g_app.suppressedAutoReconnects.count(deviceId) != 0)
+		return;
 	// Manual requests issued while Bluetooth recovery owns the adapter are
 	// queued and start once it completes; user intent is never dropped
-	// silently. Automatic requests keep their defer semantics: the recovery
-	// completion path re-issues them only when reconnect is still wanted.
-	if ((g_app.unexpectedDisconnectRecoveryPending || g_app.bluetooth.inProgress) && mode == ConnectionRequestMode::Automatic)
+	// silently. Discovery defers automatic requests until recovery completes.
+	if (g_app.bluetooth.inProgress && mode == ConnectionRequestMode::Automatic)
 		return;
 	if (mode == ConnectionRequestMode::Forced && !PrepareForcedConnection(deviceId))
 		return;
 	if (g_app.sessions.count(deviceId) != 0)
 		return;
+	if (mode != ConnectionRequestMode::Automatic)
+		g_app.suppressedAutoReconnects.erase(deviceId);
 
 	// Consume discovery-triggered reconnect once; the single live retry chain owns it.
 	g_app.pendingAutoReconnects.erase(deviceId);
@@ -725,11 +695,15 @@ void QueueConnectionInternal(
 			queued.device = device;
 		if (mode != ConnectionRequestMode::Automatic && !existingAttemptId) {
 			queued.mode = mode;
-			queued.recoveryStrategy = SelectInitialRecoveryStrategy(mode);
+			queued.recoverAfterRemoteClose = g_app.deferredBluetoothRecovery.count(deviceId) != 0;
+			queued.prepareBeforeConnect = g_app.preparedDevices.count(deviceId) == 0;
+			queued.recoveryStrategy = SelectInitialRecoveryStrategy(mode, queued.recoverAfterRemoteClose, queued.prepareBeforeConnect);
 			queued.notBefore = {};
 			queued.generation = ++g_app.connectGenerations[deviceId];
 			queued.attemptId = ++g_app.nextConnectionAttemptId;
 			queued.retryCount = 0;
+			queued.preparationAttempts = 0;
+			queued.preparationResult = BluetoothRecoveryResult::NotRequired;
 			ClearDeviceError(deviceId);
 			ApplySessionStatusToRow(deviceId);
 			g_app.connectionQueueChanged.SetEvent();
@@ -739,7 +713,9 @@ void QueueConnectionInternal(
 
 	auto generation = existingGeneration ? *existingGeneration : ++g_app.connectGenerations[deviceId];
 	auto attemptId = existingAttemptId ? *existingAttemptId : ++g_app.nextConnectionAttemptId;
-	auto resolvedRecoveryStrategy = recoveryStrategy.value_or(SelectInitialRecoveryStrategy(mode));
+	auto needsRemoteCleanup = existingAttemptId ? recoverAfterRemoteClose : g_app.deferredBluetoothRecovery.count(deviceId) != 0;
+	auto needsInitialPreparation = existingAttemptId ? prepareBeforeConnect : g_app.preparedDevices.count(deviceId) == 0;
+	auto resolvedRecoveryStrategy = recoveryStrategy.value_or(SelectInitialRecoveryStrategy(mode, needsRemoteCleanup, needsInitialPreparation));
 	if (!existingAttemptId) {
 		ClearDeviceError(deviceId);
 		ApplySessionStatusToRow(deviceId);
@@ -753,6 +729,10 @@ void QueueConnectionInternal(
 	request.retryCount = retryCount;
 	request.mode = mode;
 	request.recoveryStrategy = resolvedRecoveryStrategy;
+	request.recoverAfterRemoteClose = needsRemoteCleanup;
+	request.prepareBeforeConnect = needsInitialPreparation;
+	request.preparationAttempts = preparationAttempts;
+	request.preparationResult = preparationResult;
 	request.notBefore = notBefore;
 	RecordConnectionDiagnostic(
 		attemptId,
@@ -798,9 +778,9 @@ winrt::fire_and_forget ProcessConnectionQueue()
 			// Keep deferred retries in the queue, so a new click can wake and
 			// overtake them. Reset/re-evaluate on the UI thread to avoid lost wakes.
 			g_app.connectionQueueChanged.ResetEvent();
-			if (g_app.unexpectedDisconnectRecoveryPending || g_app.bluetooth.inProgress) {
+			if (g_app.bluetooth.inProgress) {
 				// Recovery owns the adapter; hold queued requests until it
-				// completes. Both flags end with an activityChanged signal.
+				// completes and signals activityChanged.
 				co_await winrt::resume_on_signal(g_app.activityChanged.get());
 				co_await winrt::resume_foreground(dispatcher);
 				continue;
@@ -853,7 +833,7 @@ winrt::fire_and_forget ProcessConnectionQueue()
 			if (result != ConnectionAttemptResult::Success && result != ConnectionAttemptResult::Cancelled)
 				g_app.bluetooth.needed = true;
 
-			if (IsRetryableConnectionResult(result) && !IsStopping() && g_app.connectGenerations[request.deviceId] == request.generation && !IsConnectionQueued(request.deviceId) && g_app.sessions.count(request.deviceId) == 0) {
+			if (CanRetryConnection(request, result) && !IsStopping() && g_app.connectGenerations[request.deviceId] == request.generation && !IsConnectionQueued(request.deviceId) && g_app.sessions.count(request.deviceId) == 0) {
 				auto nextStrategy = SelectRetryRecoveryStrategy(request, result);
 				auto retryNotBefore = std::chrono::steady_clock::now() + std::chrono::milliseconds(aulay::timing::RetryDelayMs(request.retryCount));
 				RecordConnectionDiagnostic(
@@ -868,7 +848,11 @@ winrt::fire_and_forget ProcessConnectionQueue()
 					request.generation,
 					request.attemptId,
 					nextStrategy,
-					retryNotBefore);
+					retryNotBefore,
+					request.recoverAfterRemoteClose,
+					request.prepareBeforeConnect,
+					request.preparationAttempts,
+					request.preparationResult);
 			} else if (result != ConnectionAttemptResult::Success && result != ConnectionAttemptResult::Cancelled) {
 				RecordConnectionDiagnostic(
 					request.attemptId,
@@ -887,6 +871,8 @@ winrt::fire_and_forget ProcessConnectionQueue()
 		co_await winrt::resume_foreground(g_uiDispatcher);
 		g_app.connectionWorkerRunning = false;
 		g_app.activityChanged.SetEvent();
+		if (!IsStopping())
+			UpdateTrayTooltip();
 		if (!g_app.connectionQueue.empty() && !IsStopping()) {
 			g_app.connectionWorkerRunning = true;
 			ProcessConnectionQueue();

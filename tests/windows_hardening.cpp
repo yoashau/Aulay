@@ -34,6 +34,7 @@
 #include <winrt/Windows.Media.Audio.h>
 #include "../AsyncUtil.hpp"
 #include "../BluetoothRouting.hpp"
+#include "../AudioFlowRecovery.hpp"
 
 namespace fs = std::filesystem;
 using winrt::Windows::Foundation::AsyncActionCompletedHandler;
@@ -244,6 +245,145 @@ void TestRouting()
 	Check(SelectBluetoothAdapterIndex({ L"USB\\B", L"USB\\A" }, { L"USB\\A", L"USB\\B" }) == 1, "nearest ancestor wins");
 }
 
+struct CaptureScenario {
+	DWORD flags = 0;
+	REFERENCE_TIME duration = -1;
+	HANDLE event = nullptr;
+	bool rejectEvents = false;
+	unsigned activations = 0, starts = 0, stops = 0;
+	UINT32 frames = 441;
+};
+struct TestCaptureClient : winrt::implements<TestCaptureClient, IAudioCaptureClient> {
+	std::shared_ptr<CaptureScenario> state;
+	explicit TestCaptureClient(std::shared_ptr<CaptureScenario> s)
+		: state(std::move(s))
+	{
+	}
+	HRESULT STDMETHODCALLTYPE GetBuffer(BYTE** data, UINT32* frames, DWORD* flags, UINT64*, UINT64*) noexcept override
+	{
+		*data = nullptr;
+		*frames = state->frames;
+		*flags = AUDCLNT_BUFFERFLAGS_SILENT;
+		return S_OK;
+	}
+	HRESULT STDMETHODCALLTYPE ReleaseBuffer(UINT32) noexcept override
+	{
+		state->frames = 0;
+		return S_OK;
+	}
+	HRESULT STDMETHODCALLTYPE GetNextPacketSize(UINT32* frames) noexcept override
+	{
+		*frames = state->frames;
+		return S_OK;
+	}
+};
+struct TestAudioClient : winrt::implements<TestAudioClient, IAudioClient> {
+	std::shared_ptr<CaptureScenario> state;
+	explicit TestAudioClient(std::shared_ptr<CaptureScenario> s)
+		: state(std::move(s))
+	{
+	}
+	HRESULT STDMETHODCALLTYPE Initialize(AUDCLNT_SHAREMODE mode, DWORD flags, REFERENCE_TIME duration, REFERENCE_TIME periodicity, WAVEFORMATEX const*, GUID const*) noexcept override
+	{
+		if (mode != AUDCLNT_SHAREMODE_SHARED || periodicity != 0)
+			return E_INVALIDARG;
+		state->flags = flags;
+		state->duration = duration;
+		return state->rejectEvents && (flags & AUDCLNT_STREAMFLAGS_EVENTCALLBACK) ? E_INVALIDARG : S_OK;
+	}
+	HRESULT STDMETHODCALLTYPE GetBufferSize(UINT32*) noexcept override { return E_NOTIMPL; }
+	HRESULT STDMETHODCALLTYPE GetStreamLatency(REFERENCE_TIME*) noexcept override { return E_NOTIMPL; }
+	HRESULT STDMETHODCALLTYPE GetCurrentPadding(UINT32*) noexcept override { return E_NOTIMPL; }
+	HRESULT STDMETHODCALLTYPE IsFormatSupported(AUDCLNT_SHAREMODE, WAVEFORMATEX const*, WAVEFORMATEX**) noexcept override { return E_NOTIMPL; }
+	HRESULT STDMETHODCALLTYPE GetMixFormat(WAVEFORMATEX** format) noexcept override
+	{
+		*format = static_cast<WAVEFORMATEX*>(CoTaskMemAlloc(sizeof(WAVEFORMATEX)));
+		if (!*format)
+			return E_OUTOFMEMORY;
+		**format = {};
+		return S_OK;
+	}
+	HRESULT STDMETHODCALLTYPE GetDevicePeriod(REFERENCE_TIME*, REFERENCE_TIME*) noexcept override { return E_NOTIMPL; }
+	HRESULT STDMETHODCALLTYPE Start() noexcept override
+	{
+		if ((state->flags & AUDCLNT_STREAMFLAGS_EVENTCALLBACK) && !state->event)
+			return E_FAIL;
+		++state->starts;
+		if (state->event)
+			SetEvent(state->event);
+		return S_OK;
+	}
+	HRESULT STDMETHODCALLTYPE Stop() noexcept override
+	{
+		++state->stops;
+		return S_OK;
+	}
+	HRESULT STDMETHODCALLTYPE Reset() noexcept override { return S_OK; }
+	HRESULT STDMETHODCALLTYPE SetEventHandle(HANDLE event) noexcept override
+	{
+		state->event = event;
+		return S_OK;
+	}
+	HRESULT STDMETHODCALLTYPE GetService(GUID const& iid, void** out) noexcept override
+	{
+		try {
+			auto capture = winrt::make_self<TestCaptureClient>(state);
+			return capture->QueryInterface(iid, out);
+		} catch (...) {
+			return winrt::to_hresult();
+		}
+	}
+};
+struct TestCaptureDevice : winrt::implements<TestCaptureDevice, IMMDevice> {
+	std::shared_ptr<CaptureScenario> state;
+	explicit TestCaptureDevice(std::shared_ptr<CaptureScenario> s)
+		: state(std::move(s))
+	{
+	}
+	HRESULT STDMETHODCALLTYPE Activate(GUID const& iid, DWORD, PROPVARIANT*, void** out) noexcept override
+	{
+		try {
+			++state->activations;
+			auto client = winrt::make_self<TestAudioClient>(state);
+			return client->QueryInterface(iid, out);
+		} catch (...) {
+			return winrt::to_hresult();
+		}
+	}
+	HRESULT STDMETHODCALLTYPE OpenPropertyStore(DWORD, IPropertyStore**) noexcept override { return E_NOTIMPL; }
+	HRESULT STDMETHODCALLTYPE GetId(LPWSTR*) noexcept override { return E_NOTIMPL; }
+	HRESULT STDMETHODCALLTYPE GetState(DWORD* state) noexcept override
+	{
+		*state = DEVICE_STATE_ACTIVE;
+		return S_OK;
+	}
+};
+void TestCaptureNotifications()
+{
+	for (bool fallback : { false, true }) {
+		auto scenario = std::make_shared<CaptureScenario>();
+		scenario->rejectEvents = fallback;
+		auto device = winrt::make_self<TestCaptureDevice>(scenario);
+		AudioFlow::Capture capture;
+		Check(capture.Open(device.get()) == S_OK, "capture opens with event or compatible timer buffering");
+		Check(capture.eventDriven == !fallback && scenario->activations == (fallback ? 2u : 1u), "unsupported event buffering falls back once");
+		Check(scenario->duration == (fallback ? 10000000 : 0), "event capture requests minimum engine buffer");
+		Check(fallback || WaitForSingleObject(capture.ready.get(), 0) == WAIT_OBJECT_0, "audio-ready event is registered before Start");
+		std::uint64_t frames = 0;
+		Check(capture.Drain(frames) == S_OK && frames == 441, "silent packets verify frame delivery without reading samples");
+		capture.Close();
+		Check(!capture.client && !capture.capture && !capture.eventDriven && WaitForSingleObject(capture.ready.get(), 0) == WAIT_TIMEOUT, "close releases client and clears stale readiness");
+	}
+	auto discovery = winrt::make_self<AudioFlow::EndpointEvents>(L"");
+	discovery->Notify(L"new-capture");
+	Check(WaitForSingleObject(discovery->changed.get(), 0) == WAIT_OBJECT_0, "endpoint discovery notification wakes immediately");
+	auto exact = winrt::make_self<AudioFlow::EndpointEvents>(L"my-capture");
+	exact->Notify(L"other-capture");
+	Check(WaitForSingleObject(exact->changed.get(), 0) == WAIT_TIMEOUT, "endpoint cycle ignores unrelated notifications");
+	exact->Notify(L"my-capture");
+	Check(WaitForSingleObject(exact->changed.get(), 0) == WAIT_OBJECT_0, "endpoint cycle receives exact notification");
+}
+
 void SetDirectoryAccess(fs::path const& path, bool writable)
 {
 	PSECURITY_DESCRIPTOR descriptor = nullptr;
@@ -308,6 +448,36 @@ void TestSettings()
 	Check(notices == 1, "both paths failing shows a single error notification");
 }
 
+void TestRecoveryGates()
+{
+	AudioFlow::State state;
+	state.recoveryDeadline = GetTickCount64() + 10000;
+	// A null enumerator is deliberate: rejected requests must not reach the
+	// audio backend. No endpoint is disabled by these tests.
+	auto rejected = [&] { return AudioFlow::Cycle(state, nullptr, L"", false) == E_ABORT; };
+	Check(rejected(), "no explicit authorization cannot cycle endpoint");
+	state.isOpened = [] { return false; };
+	Check(rejected(), "closed connection cannot cycle endpoint");
+	state.isOpened = []() -> bool { winrt::throw_hresult(E_FAIL); };
+	Check(rejected(), "unreadable connection cannot cycle endpoint");
+	unsigned calls = 0;
+	state.isOpened = [&] { ++calls; return true; };
+	state.stop = true;
+	Check(rejected() && calls == 0, "cancelled request does not query or cycle endpoint");
+	state.stop = false;
+	state.recoveryDeadline = GetTickCount64();
+	Check(rejected(), "expired authorization cannot cycle endpoint");
+	state.recoveryDeadline = GetTickCount64() + 10000;
+	state.isOpened = [&] { state.recoveryDeadline = 0; return true; };
+	Check(rejected(), "deadline is rechecked after live-state query");
+	state.recoveryDeadline = GetTickCount64() + 10000;
+	state.isOpened = [&] { state.stop = true; return true; };
+	Check(rejected(), "cancellation during live-state query vetoes recovery");
+	state.stop = false;
+	state.isOpened = [] { return true; };
+	Check(AudioFlow::ConnectionOpened(state), "authorized live connection remains eligible");
+}
+
 void ProbeLocalRouting()
 {
 	using namespace winrt::Windows::Devices::Enumeration;
@@ -350,6 +520,9 @@ int main(int argc, char** argv)
 		TestDeadlines();
 		std::cout << "ROUTING_START\n";
 		TestRouting();
+		TestCaptureNotifications();
+		std::cout << "RECOVERY_GATES_START\n";
+		TestRecoveryGates();
 		std::cout << "SETTINGS_START\n";
 		TestSettings();
 		if (argc > 1 && std::string(argv[1]) == "--probe")

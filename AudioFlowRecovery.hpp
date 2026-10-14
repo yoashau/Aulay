@@ -39,13 +39,15 @@ struct __declspec(uuid("f8679f50-850a-41cf-9c72-430f290290c8")) IPolicyConfig : 
 static constexpr GUID clsid = { 0x870af99c, 0x171d, 0x4f9e, { 0xaf, 0x0d, 0xe6, 0x3d, 0xf4, 0x0c, 0x2b, 0xc9 } };
 struct State {
 	std::atomic_bool stop { false }, closed { false }, cleanup { false }, done { false };
-	std::atomic_bool cycling { false };
 	wil::unique_event wake { wil::EventOptions::None };
 	wil::unique_event closedSignal { wil::EventOptions::ManualReset };
 	wil::unique_event finishedSignal { wil::EventOptions::ManualReset };
 	std::atomic<HRESULT> cleanupResult { S_OK };
 	std::wstring interfaceId;
 	Log log;
+	// Only explicit initial connect verification supplies this authorization.
+	std::function<bool()> isOpened;
+	ULONGLONG recoveryDeadline = 0; // Worker-owned; rechecked before any disable.
 };
 inline void Write(State& s, std::wstring const& text) noexcept
 {
@@ -178,7 +180,7 @@ struct EndpointEvents : winrt::implements<EndpointEvents, IMMNotificationClient>
 	}
 	void Notify(LPCWSTR id) noexcept
 	{
-		if (id && _wcsicmp(id, endpoint.c_str()) == 0)
+		if (id && (endpoint.empty() || _wcsicmp(id, endpoint.c_str()) == 0))
 			SetEvent(changed.get());
 	}
 };
@@ -208,14 +210,23 @@ inline void SignalClosed(State& s) noexcept
 }
 inline winrt::Windows::Foundation::IAsyncAction WaitFinished(std::shared_ptr<State> s)
 {
-	co_await winrt::resume_on_signal(s->finishedSignal.get());
+	if (!s->done)
+		co_await winrt::resume_on_signal(s->finishedSignal.get());
 	if (s->stop && !s->closed)
 		co_await winrt::resume_on_signal(s->closedSignal.get());
+}
+inline bool ConnectionOpened(State& s) noexcept
+{
+	try {
+		return !s.stop && s.isOpened && s.isOpened() && !s.stop;
+	} catch (...) {
+		return false;
+	}
 }
 inline HRESULT Cycle(State& s, IMMDeviceEnumerator* en, std::wstring const& id, bool closing)
 {
 	// A close can cancel monitoring, but cannot cancel the restore half of an active cycle.
-	if ((!closing && s.stop) || ResolveEndpoint(s.interfaceId) != id)
+	if ((!closing && (!ConnectionOpened(s) || GetTickCount64() >= s.recoveryDeadline)) || ResolveEndpoint(s.interfaceId) != id)
 		return E_ABORT;
 	DWORD original = 0;
 	auto hr = EndpointState(en, id, original);
@@ -227,26 +238,30 @@ inline HRESULT Cycle(State& s, IMMDeviceEnumerator* en, std::wstring const& id, 
 	hr = CoCreateInstance(clsid, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pc));
 	if (FAILED(hr))
 		return hr;
-	if (!closing && s.stop)
-		return E_ABORT;
 	auto events = winrt::make_self<EndpointEvents>(id);
 	hr = en->RegisterEndpointNotificationCallback(events.get());
 	if (FAILED(hr))
 		return hr;
 	auto unregister = wil::scope_exit([&] { en->UnregisterEndpointNotificationCallback(events.get()); });
-	s.cycling = true;
+	if (!closing && (!ConnectionOpened(s) || GetTickCount64() >= s.recoveryDeadline))
+		return E_ABORT;
+	if (!closing) {
+		ComPtr<IMMDevice> device;
+		DWORD state = 0;
+		bool connected = false;
+		if (FAILED(en->GetDevice(id.c_str(), &device)) || FAILED(device->GetState(&state)) || state != DEVICE_STATE_ACTIVE || FAILED(Jack(device.Get(), connected)) || !connected)
+			return E_ABORT;
+	}
 	struct Restore {
 		IPolicyConfig* pc;
 		const std::wstring& id;
-		State& state;
 		bool needed = true;
 		~Restore()
 		{
 			if (needed)
 				pc->SetEndpointVisibility(id.c_str(), true);
-			state.cycling = false;
 		}
-	} restore { pc.Get(), id, s };
+	} restore { pc.Get(), id };
 	Write(s, closing ? L"audio-flow cleanup begin" : L"audio-flow silent-recovery begin");
 	auto disabled = pc->SetEndpointVisibility(id.c_str(), false);
 	bool observed = false;
@@ -279,6 +294,8 @@ inline HRESULT Cycle(State& s, IMMDeviceEnumerator* en, std::wstring const& id, 
 struct Capture {
 	ComPtr<IAudioClient> client;
 	ComPtr<IAudioCaptureClient> capture;
+	wil::unique_event ready { wil::EventOptions::None };
+	bool eventDriven = false;
 	~Capture() { Close(); }
 	void Close() noexcept
 	{
@@ -288,8 +305,10 @@ struct Capture {
 		}
 		capture.Reset();
 		client.Reset();
+		eventDriven = false;
+		ready.ResetEvent();
 	}
-	HRESULT Open(IMMDevice* d)
+	HRESULT OpenMode(IMMDevice* d, bool useEvents)
 	{
 		Close();
 		auto hr = d->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, reinterpret_cast<void**>(client.GetAddressOf()));
@@ -298,15 +317,27 @@ struct Capture {
 		WAVEFORMATEX* format = nullptr;
 		hr = client->GetMixFormat(&format);
 		if (SUCCEEDED(hr)) {
-			hr = client->Initialize(AUDCLNT_SHAREMODE_SHARED, 0, 10000000, 0, format, nullptr);
+			hr = client->Initialize(AUDCLNT_SHAREMODE_SHARED, useEvents ? AUDCLNT_STREAMFLAGS_EVENTCALLBACK : 0, useEvents ? 0 : 10000000, 0, format, nullptr);
 		}
 		CoTaskMemFree(format);
+		if (SUCCEEDED(hr) && useEvents)
+			hr = client->SetEventHandle(ready.get());
 		if (SUCCEEDED(hr))
 			hr = client->GetService(IID_PPV_ARGS(&capture));
 		if (SUCCEEDED(hr))
 			hr = client->Start();
 		if (FAILED(hr))
 			Close();
+		else
+			eventDriven = useEvents;
+		return hr;
+	}
+	HRESULT Open(IMMDevice* d)
+	{
+		auto hr = OpenMode(d, true);
+		// Retain timer-driven capture for a driver that rejects event buffering.
+		if (hr == E_INVALIDARG || hr == AUDCLNT_E_EVENTHANDLE_NOT_EXPECTED)
+			hr = OpenMode(d, false);
 		return hr;
 	}
 	HRESULT Drain(std::uint64_t& frames)
@@ -348,16 +379,24 @@ inline void Run(std::shared_ptr<State> s) noexcept
 		auto hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&en));
 		if (FAILED(hr))
 			winrt::throw_hresult(hr);
+		auto endpointEvents = winrt::make_self<EndpointEvents>(L"");
+		auto registered = s->isOpened && SUCCEEDED(en->RegisterEndpointNotificationCallback(endpointEvents.get()));
+		auto unregister = wil::scope_exit([&] { if (registered) en->UnregisterEndpointNotificationCallback(endpointEvents.get()); });
 		Capture capture;
-		aulay::flow::RecoveryPolicy policy;
+		aulay::flow::RecoveryPolicy policy { bool(s->isOpened) };
 		std::wstring endpoint;
 		ULONGLONG nextResolve = 0, nextCapture = 0, verifyUntil = 0;
 		bool mappedLogged = false, errorLogged = false;
-		while (!s->stop) {
+		bool captureLogged = false;
+		auto monitorUntil = GetTickCount64() + aulay::flow::RecoveryPolicy::noFramesMs + 10000;
+		s->recoveryDeadline = monitorUntil;
+		while (!s->stop && s->isOpened && GetTickCount64() < monitorUntil) {
+			if (!ConnectionOpened(*s))
+				break;
 			auto tick = GetTickCount64();
 			if (endpoint.empty() && tick >= nextResolve) {
 				endpoint = ResolveEndpoint(s->interfaceId);
-				nextResolve = tick + 1000;
+				nextResolve = tick + 250;
 			}
 			if (!endpoint.empty() && !mappedLogged) {
 				Write(*s, L"audio-flow capture endpoint mapped from exact 110A child");
@@ -374,7 +413,11 @@ inline void Run(std::shared_ptr<State> s) noexcept
 			if (active && known && jack) {
 				if (!capture.client && tick >= nextCapture) {
 					hr = capture.Open(d.Get());
-					nextCapture = tick + 1000;
+					nextCapture = GetTickCount64() + 250;
+					if (SUCCEEDED(hr) && !captureLogged) {
+						Write(*s, L"audio-flow capture ready event-driven=" + std::to_wstring(capture.eventDriven) + L" no-frames-window-ms=" + std::to_wstring(aulay::flow::RecoveryPolicy::noFramesMs));
+						captureLogged = true;
+					}
 					if (FAILED(hr) && !errorLogged) {
 						Write(*s, L"audio-flow capture unavailable " + Hr(hr));
 						errorLogged = true;
@@ -391,15 +434,20 @@ inline void Run(std::shared_ptr<State> s) noexcept
 				capture.Close();
 			if (!active && tick >= nextResolve) {
 				endpoint.clear();
-				nextResolve = tick + 1000;
+				nextResolve = tick + 250;
 			}
+			// Capture initialization can itself take time. Never count that time
+			// as proof that an already-running capture supplied no frames.
+			tick = GetTickCount64();
 			auto decision = policy.Observe({ tick, true, true, s->stop.load(), active, known, jack, started, readOk, frames });
 			if (decision == aulay::flow::Decision::Recover) {
 				capture.Close(); // own client must not keep the old audio stream alive
 				auto result = Cycle(*s, en.Get(), endpoint, false);
 				Write(*s, L"audio-flow silent-recovery result=" + Hr(result));
-				if (result == S_OK)
+				if (result == S_OK) {
 					verifyUntil = GetTickCount64() + 10000;
+					monitorUntil = verifyUntil;
+				}
 			}
 			if (verifyUntil && frames) {
 				Write(*s, L"audio-flow recovery verified frames=" + std::to_wstring(frames));
@@ -409,9 +457,22 @@ inline void Run(std::shared_ptr<State> s) noexcept
 				Write(*s, L"audio-flow recovery not verified; no radio escalation");
 				verifyUntil = 0;
 			}
-			WaitForSingleObject(s->wake.get(), 100); // sampling cadence, stop wakes immediately
+			if (decision == aulay::flow::Decision::Healthy || decision == aulay::flow::Decision::Paused || decision == aulay::flow::Decision::Cancelled) {
+				Write(*s, decision == aulay::flow::Decision::Healthy ? L"audio-flow initial frames verified" : decision == aulay::flow::Decision::Paused ? L"audio-flow initial verification paused"
+																																						 : L"audio-flow initial verification cancelled");
+				break;
+			}
+			HANDLE signals[] = { s->wake.get(), endpointEvents->changed.get(), capture.ready.get() };
+			auto signaled = WaitForMultipleObjects(capture.eventDriven ? 3 : 2, signals, FALSE, 100);
+			if (signaled == WAIT_OBJECT_0 + 1)
+				nextResolve = nextCapture = 0; // Recheck immediately on endpoint changes.
 		}
 		capture.Close();
+		if (registered && SUCCEEDED(en->UnregisterEndpointNotificationCallback(endpointEvents.get())))
+			registered = false;
+		if (verifyUntil)
+			Write(*s, L"audio-flow recovery verification ended without frames; no radio escalation");
+		Write(*s, L"audio-flow startup verification ended; later idle periods do not authorize recovery");
 		WaitForSingleObject(s->closedSignal.get(), INFINITE); // Close completion, not a guessed delay
 		if (s->cleanup) {
 			endpoint = ResolveEndpoint(s->interfaceId);
@@ -427,11 +488,12 @@ inline void Run(std::shared_ptr<State> s) noexcept
 	CoUninitialize();
 	s->done = true;
 }
-inline std::shared_ptr<State> Start(std::wstring id, Log log, bool cleanupOnly = false, bool closedAlready = true)
+inline std::shared_ptr<State> Start(std::wstring id, Log log, bool cleanupOnly = false, bool closedAlready = true, std::function<bool()> isOpened = {})
 {
 	auto s = std::make_shared<State>();
 	s->interfaceId = std::move(id);
 	s->log = std::move(log);
+	s->isOpened = std::move(isOpened);
 	if (cleanupOnly) {
 		s->cleanup = true;
 		s->stop = true;

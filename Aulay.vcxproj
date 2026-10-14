@@ -354,6 +354,7 @@
     <ClInclude Include="I18n.hpp" />
     <ClInclude Include="FnvHash.hpp" />
     <ClInclude Include="AsyncUtil.hpp" />
+    <ClInclude Include="ConnectionCreation.hpp" />
     <ClInclude Include="AudioFlowRecovery.hpp" />
     <ClInclude Include="AudioFlowPolicy.hpp" />
     <ClInclude Include="ConnectionTiming.hpp" />

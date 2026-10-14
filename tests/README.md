@@ -14,12 +14,13 @@ Requirements: Python 3, Git, and a C++17 compiler (GCC or Clang for the portable
 | --- | --- | --- |
 | `test_project_layout.py` | Portable | Source references, IDE filters, icon inventory, build paths, version metadata, resource encoding, ignore rules and CI wiring |
 | `test_regressions.py` | Portable + C++17 | Executes extracted connection-policy and queue functions; checks event integration constraints |
-| `test_audio_flow.py` | Portable + C++17 | Frame-recovery policy, unbounded retry backoff and cleanup guards |
+| `test_remote_disconnect.py` | Portable + C++17 | Remote close, duplicate/stale callbacks, reopened links, device isolation and cleanup worker selection on failed/closed sessions |
+| `test_audio_flow.py` | Portable + C++17 | Authorized startup frame recovery, first-frame/pause disarming, retry backoff and cleanup guards |
 | `test_diagnostic_overhead.py` | Portable + C++17 | 30s detail expiry, asynchronous log queue, bounded backlog and drain |
 | `test_hardening.py` | Portable | Source-level deadline, routing and settings constraints |
 | `test_debug_markers.py` | Portable + C++17 | Executes marker/disconnect functions with fake UI/connections; checks unified diagnostics and Forced request dispatch |
 | `test_debug_timeline.py` | Portable | Source-level collector and timeline constraints |
-| `run_windows_tests.cmd` | Windows, Release x64 build | Native deadlines, routing selection, settings persistence, asynchronous shutdown drain and generated recovery fault harness |
+| `run_windows_tests.cmd` | Windows, Release x64 build | Native recovery authorization/cancellation/expiry gates, event capture/fallback, deadlines, routing, settings, preparation and creation fault harnesses |
 | `run_debug_audio_test.cmd` | Windows, unified Release x64 build | Diagnostic snapshot formatting and collection |
 | `run_debug_monitor_test.cmd` | Windows, unified Release x64 build | Native journal, queue, rotation, retention and callback behavior |
 | `check_format.py` | Portable | clang-format compliance over the app sources (CI pins clang-format 19.1.5) |
@@ -42,13 +43,13 @@ These are deliberate opt-in checks, not CI coverage:
 - `run_debug_monitor_test.cmd --audio`: creates the test program's own silent WASAPI session to verify endpoint/session events.
 - `generate_debug_ui_fixture.py OUTPUT_CPP` and `run_debug_ui_smoke.ps1 -ExePath FIXTURE_EXE`: generate, build and exercise an instrumented UI fixture in a disposable source copy. The fixture source replaces `Aulay.cpp` only in that copy; build it with the normal unified build. Use a dedicated executable directory because the smoke script writes `Aulay.json` beside the fixture EXE. Never distribute this instrumented executable.
 
-`generate_recovery_test.py` and `generate_settings_test.py` are helpers invoked by `run_windows_tests.cmd`, not independent test suites. The settings harness executes the actual worker and drain with a pumped dispatcher and controlled I/O: fast completion, an in-flight older snapshot, a hung write, and write/snapshot failures.
+`generate_recovery_test.py`, `generate_creation_test.py` and `generate_settings_test.py` are helpers invoked by `run_windows_tests.cmd`, not independent test suites. The settings harness executes the actual worker and drain with a pumped dispatcher and controlled I/O: fast completion, an in-flight older snapshot, a hung write, and write/snapshot failures.
 
 Portable source checks are not full application builds. Native fault tests do not power-cycle Bluetooth. Real-device connection, audible playback, unexpected disconnects and exit during recovery need Windows hardware testing.
 
 ## 中文说明
 
-`python tests/run_tests.py` 是统一跨平台入口，包含项目整洁性检查和六组功能/源码测试。Windows CI 构建统一的 Aulay，并执行三个非交互原生测试脚本。代码风格由 `.clang-format` 唯一约束，CI 通过 `tests/check_format.py`（固定 clang-format 19.1.5）强制执行。
+`python tests/run_tests.py` 是统一跨平台入口，包含项目整洁性检查和七组功能/源码测试。Windows CI 构建统一的 Aulay，并执行三个非交互原生测试脚本。代码风格由 `.clang-format` 唯一约束，CI 通过 `tests/check_format.py`（固定 clang-format 19.1.5）强制执行。
 
 `--probe`、`--audio` 和 UI 夹具属于显式选择的本地集成检查。UI 测试必须使用独立源码及 EXE 目录，它会写入专用配置；测试夹具不得作为产品发布。源码约束检查、原生故障模拟与真实蓝牙播放验证是不同层次的测试。
 

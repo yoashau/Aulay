@@ -122,7 +122,7 @@ jobs:
         target_commitish: ${{ github.sha }}
         draft: true
         body: |
-          Replaced the application and tray icons and optimized parts of the connection and recovery logic.
+          Refreshed the tray icon and device flyout. Action labels fit the 15-DIP type, and the startup reconnect preference stays available when exiting with nothing connected.
         fail_on_unmatched_files: true
         files: |
           x64/Release/Aulay64.exe

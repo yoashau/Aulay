@@ -17,6 +17,14 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
+#: TrayPanel.hpp
+msgid "Exit Aulay?"
+msgstr ""
+
+#: Aulay.cpp:34
+msgid "Aulay is already running. Check the notification tray for its icon."
+msgstr ""
+
 #: Aulay.cpp:71
 msgid "Unsupported Operating System"
 msgstr ""
@@ -117,10 +125,6 @@ msgstr ""
 
 #: Aulay.cpp:1226 Aulay.cpp:1479
 msgid "The connection closed unexpectedly"
-msgstr ""
-
-#: Aulay.cpp:1301
-msgid "Unable to restart Bluetooth"
 msgstr ""
 
 #: Aulay.cpp:1399

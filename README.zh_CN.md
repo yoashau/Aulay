@@ -62,6 +62,10 @@ msbuild Aulay.sln "-p:Configuration=Release;Platform=x64"
 
 `build.cmd` 执行同样的构建并自动恢复 NuGet 包。产物在 `x64/Release/Aulay64.exe`；解决方案同时定义 x86、ARM、ARM64 配置（ARM32 需要 Windows SDK 10.0.22621.0，工程已显式选择）。
 
+图标使用 16 DIP 矢量轮廓、1 DIP 笔画和 `#202020` 前景色，各 DPI 尺寸直接渲染。需要重新生成时，在 Windows PowerShell 中运行 `powershell -STA -File tools/make-icon.ps1`；只依赖系统 WPF，不需要额外图像库。
+
+托盘界面保留原有设备行结构，统一采用 8 DIP 圆角、15 DIP 主要文字、主题感知的 Acrylic 和细边框；操作按钮宽 124 DIP，避免 15 DIP 标签被按钮边框和内边距裁切。右键菜单使用平面悬停／按下状态。设备面板整体向上滑入（250 ms）、向下滑出（167 ms），支持收起中重新展开，并遵守系统动画、高对比度及退出清理设置。
+
 ## 测试
 
 ```sh

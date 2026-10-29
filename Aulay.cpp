@@ -138,6 +138,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			// window; the grace window exempts only those bounded moments, so
 			// deactivation from clicking elsewhere still closes the device UI.
 			if (g_xamlDeviceFlyout) {
+				g_deviceFlyoutMotion.reopenAfterClose = false;
 				if (IsRadioDeactivationGraceActive())
 					RecordDiagnostic(L"ui", L"device-flyout dismiss deferred: radio transition grace active");
 				else
@@ -189,6 +190,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		// An outside click or foreground change is explicit user intent; the
 		// radio-transition grace window does not apply here.
 		if (g_xamlDeviceFlyout && g_app.deviceFlyoutVisible && !IsStopping()) {
+			g_deviceFlyoutMotion.reopenAfterClose = false;
 			RecordDiagnostic(L"ui", L"device-flyout dismissed by outside interaction");
 			g_xamlDeviceFlyout.Hide();
 		}
@@ -197,15 +199,18 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		DestroyWindow(hWnd);
 		return 0;
 	case WM_DPICHANGED:
+	case WM_THEMECHANGED:
 	case WM_SETTINGCHANGE:
 	case WM_DISPLAYCHANGE:
 		if (!IsStopping() && g_hTrayIcon) {
+			UpdateFlyoutTheme();
 			SetupTrayIcon();
 			UpdateNotifyIcon();
 		}
 		return DefWindowProcW(hWnd, message, wParam, lParam);
 	default:
 		if (!IsStopping() && WM_TASKBAR_CREATED && message == WM_TASKBAR_CREATED) {
+			UpdateFlyoutTheme();
 			SetupTrayIcon();
 			UpdateNotifyIcon();
 		}

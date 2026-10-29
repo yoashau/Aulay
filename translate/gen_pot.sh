@@ -3,7 +3,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-FILES="Aulay.cpp SettingsUtil.hpp"
+FILES="Aulay.cpp ConnectionFlow.hpp DeviceListUi.hpp SettingsSave.hpp SettingsUtil.hpp TrayPanel.hpp"
 
 COPYRIGHT_HOLDER="Richard Yu <yurichard3839@gmail.com>"
 PKG_NAME="Aulay"

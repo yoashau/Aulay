@@ -18,6 +18,14 @@ msgstr ""
 "X-Generator: Poedit 2.3.1\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+#: TrayPanel.hpp
+msgid "Exit Aulay?"
+msgstr "結束 Aulay？"
+
+#: Aulay.cpp:34
+msgid "Aulay is already running. Check the notification tray for its icon."
+msgstr "Aulay 已在執行。請在通知區域查看它的圖示。"
+
 #: Aulay.cpp:71
 msgid "Unsupported Operating System"
 msgstr "作業系統不支援"
@@ -135,10 +143,6 @@ msgstr "連線意外關閉"
 #: Aulay.cpp:1399
 msgid "The device is unavailable"
 msgstr "裝置目前無法使用"
-
-#: Aulay.cpp:1301
-msgid "Unable to restart Bluetooth"
-msgstr "無法重新啟動藍牙"
 
 #: SettingsUtil.hpp
 msgid "Settings could not be saved. Check folder access or available disk space."

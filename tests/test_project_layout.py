@@ -24,6 +24,51 @@ def inventory(tree):
             for item in tree.findall('.//m:' + tag, NS) if item.get('Include')}
 
 
+
+def cpp_string(raw):
+    return raw.encode('utf-8').decode('unicode_escape')
+
+
+def translation_units(path):
+    text = path.read_text(encoding='utf-8')
+    pairs = []
+    pattern = re.compile(
+        r'msgid ((?:"(?:\\.|[^"\\])*"\s*)+)msgstr ((?:"(?:\\.|[^"\\])*"\s*)+)')
+    part = re.compile(r'"((?:\\.|[^"\\])*)"')
+    for match in pattern.finditer(text):
+        source = cpp_string(''.join(part.findall(match.group(1))))
+        target = cpp_string(''.join(part.findall(match.group(2))))
+        if source:
+            pairs.append((source, target))
+    return pairs
+
+
+def translation_catalog_problems():
+    string_re = re.compile(r'_\(L"((?:\\.|[^"\\])*)"\)')
+    found = {}
+    for path in list(ROOT.glob('*.cpp')) + list(ROOT.glob('*.hpp')) + list(ROOT.glob('*.h')):
+        for match in string_re.finditer(path.read_text(encoding='utf-8-sig')):
+            found.setdefault(cpp_string(match.group(1)), path.name)
+    pot = {source for source, _ in translation_units(ROOT / 'translate/source/messages.pot')}
+    problems = []
+    missing = sorted(set(found) - pot)
+    extra = sorted(pot - set(found))
+    if missing:
+        problems.append('missing from messages.pot: ' + ', '.join(missing))
+    if extra:
+        problems.append('stale messages.pot entries: ' + ', '.join(extra))
+    extractor = (ROOT / 'translate/gen_pot.sh').read_text(encoding='utf-8')
+    for name in sorted(set(found.values())):
+        if name not in extractor:
+            problems.append('gen_pot.sh does not scan ' + name)
+    for language in ('zh_CN.po', 'zh_TW.po'):
+        units = dict(translation_units(ROOT / 'translate/source' / language))
+        untranslated = sorted(source for source in found if source != 'Aulay' and not units.get(source))
+        if untranslated:
+            problems.append(language + ' missing translation: ' + ', '.join(untranslated))
+    return problems
+
+
 def main():
     project = ET.parse(ROOT / 'Aulay.vcxproj')
     items = inventory(project)
@@ -76,6 +121,7 @@ def main():
         'CI runs each noninteractive native suite': all('call tests\\' + name in read('.github/workflows/build.yaml') for name in ('run_windows_tests.cmd', 'run_debug_audio_test.cmd', 'run_debug_monitor_test.cmd')),
         'both READMEs show unified test entry point': all('python tests/run_tests.py' in read(name) for name in ('README.md', 'README.zh_CN.md')),
         'MIT notice remains present': 'Copyright (c) 2020 Richard Yu' in read('LICENSE') and 'permission notice shall be included' in read('LICENSE'),
+        'translation catalog matches user-facing strings': not translation_catalog_problems(),
     }
     # Evaluate Git's actual rules, independently of the source tree's index.
     with tempfile.TemporaryDirectory(prefix='aulay-layout-') as tmp:
@@ -92,9 +138,13 @@ def main():
             return result.returncode == 0
         checks['source inputs are not ignored'] = all(not is_ignored(f) for f in visible)
         checks['generated and runtime files are ignored'] = all(is_ignored(f) for f in ignored)
+    catalog_problems = translation_catalog_problems()
     for label, passed in checks.items():
         if not passed:
             print('FAIL ' + label)
+            if label.startswith('translation catalog'):
+                for problem in catalog_problems:
+                    print('  ' + problem)
     print(f'PROJECT_LAYOUT {sum(checks.values())}/{len(checks)} passed')
     print('PROJECT_LAYOUT_RESULT=' + ('PASS' if all(checks.values()) else 'FAIL'))
     return 0 if all(checks.values()) else 1

@@ -3,6 +3,7 @@
 // Tray device list UI: device rows, per-row status text, empty state and
 // the stateful tray tooltip. Owns the discovered-device and row maps.
 #include "Aulay.h"
+#include <winrt/Windows.UI.ViewManagement.h>
 
 struct DeviceRow {
 	UIElement panel;
@@ -18,8 +19,12 @@ std::unordered_map<std::wstring, DeviceInformation> g_discoveredDevices;
 // UI owns this map; workers only own their independent state and COM objects.
 std::unordered_map<std::wstring, std::shared_ptr<AudioFlow::State>> g_audioFlowTasks;
 
-constexpr double DEVICE_LIST_WIDTH = 264.0;
-constexpr double DEVICE_ACTION_BUTTON_WIDTH = 104.0;
+// 15 DIP Segoe UI Semibold "Quick Connect" measures 99.3 DIP. The button
+// template uses a 2 DIP border and 8 DIP horizontal padding, so 104 DIP clips
+// the label. 124 DIP leaves about 5 DIP after that chrome. The panel keeps the
+// previous 8 DIP gap between its padding and the action row.
+constexpr double DEVICE_LIST_WIDTH = 304.0;
+constexpr double DEVICE_ACTION_BUTTON_WIDTH = 124.0;
 constexpr double DEVICE_ACTION_SPACING = 8.0;
 constexpr double DEVICE_ACTION_ROW_WIDTH = DEVICE_ACTION_BUTTON_WIDTH * 2 + DEVICE_ACTION_SPACING;
 constexpr double DEVICE_PANEL_HORIZONTAL_PADDING = 16.0;
@@ -30,6 +35,33 @@ constexpr double DEVICE_TEXT_EDGE_INSET = 4.0;
 constexpr double DEVICE_INFO_ACTION_SPACING = 12.0;
 constexpr double DEVICE_CARD_VERTICAL_MARGIN = 8.0;
 constexpr double DEVICE_STATUS_MAX_WIDTH = 104.0;
+
+// Opacity is not a theme resource. High contrast already supplies the
+// foreground color, and dimming it makes status text fail that theme.
+double SecondaryTextOpacity()
+{
+	using namespace winrt::Windows::UI::ViewManagement;
+	return AccessibilitySettings().HighContrast() ? 1.0 : 0.75;
+}
+
+void RefreshSecondaryTextContrast()
+{
+	auto opacity = SecondaryTextOpacity();
+	if (g_emptyStateText)
+		g_emptyStateText.Opacity(opacity);
+	for (auto& row : g_deviceRows)
+		row.second.statusText.Opacity(opacity);
+}
+
+void ApplyFlyoutButtonStyle(Button const& button)
+{
+	button.CornerRadius({ 8, 8, 8, 8 });
+	button.FontSize(15.0);
+	button.FontWeight(FontWeights::SemiBold());
+	// Own the padding the width calculation assumes. The theme default is the
+	// same 8,4,8,5, but a later theme change must not clip the label again.
+	button.Padding({ 8, 4, 8, 5 });
+}
 
 void UpdateTrayTooltip()
 {
@@ -63,6 +95,10 @@ void UpdateTrayTooltip()
 	}
 	if (tip.size() > 127)
 		tip.resize(127);
+	// szTip is UCS-2/UTF-16. A cut between a surrogate pair makes the tray
+	// tooltip an invalid string and can drop the last character.
+	if (!tip.empty() && IS_HIGH_SURROGATE(tip.back()))
+		tip.pop_back();
 	wcscpy_s(g_nid.szTip, tip.c_str());
 	Shell_NotifyIconW(NIM_MODIFY, &g_nid);
 }
@@ -224,14 +260,14 @@ void UpsertDeviceRow(DeviceInformation const& device)
 
 	TextBlock nameText;
 	nameText.Text(device.Name());
-	nameText.FontSize(14.0);
+	nameText.FontSize(15.0);
 	nameText.FontWeight(FontWeights::SemiBold());
 	nameText.VerticalAlignment(VerticalAlignment::Center);
 	nameText.TextTrimming(TextTrimming::CharacterEllipsis);
 
 	TextBlock statusText;
-	statusText.FontSize(11.5);
-	statusText.Opacity(0.6);
+	statusText.FontSize(13.0);
+	statusText.Opacity(SecondaryTextOpacity());
 	statusText.Margin({ 8, 0, 0, 0 });
 	statusText.VerticalAlignment(VerticalAlignment::Center);
 	statusText.HorizontalAlignment(HorizontalAlignment::Right);
@@ -256,7 +292,7 @@ void UpsertDeviceRow(DeviceInformation const& device)
 	Button quickConnectButton;
 	quickConnectButton.Content(winrt::box_value(_(L"Quick Connect")));
 	quickConnectButton.Width(DEVICE_ACTION_BUTTON_WIDTH);
-	quickConnectButton.CornerRadius({ 4, 4, 4, 4 });
+	ApplyFlyoutButtonStyle(quickConnectButton);
 	quickConnectButton.Click([id](const auto&, const auto&) {
 		if (IsStopping())
 			return;
@@ -279,7 +315,7 @@ void UpsertDeviceRow(DeviceInformation const& device)
 	Button forceConnectButton;
 	forceConnectButton.Content(winrt::box_value(_(L"Force Connect")));
 	forceConnectButton.Width(DEVICE_ACTION_BUTTON_WIDTH);
-	forceConnectButton.CornerRadius({ 4, 4, 4, 4 });
+	ApplyFlyoutButtonStyle(forceConnectButton);
 	forceConnectButton.Click([id](const auto&, const auto&) {
 		if (IsStopping())
 			return;

@@ -3,27 +3,154 @@
 // Tray shell UI: tray icon, the device flyout with its outside-click
 // dismissal hooks, the exit confirmation flyout and the context menu.
 #include "Aulay.h"
+#include <winrt/Windows.UI.ViewManagement.h>
+#include <winrt/Windows.UI.Xaml.Media.Animation.h>
+
+// GetDpiForWindow returns 0 for an invalid window. Callers divide by this value
+// and pass it to GetSystemMetricsForDpi, so a failure must not become zero.
+UINT WindowDpi(HWND window)
+{
+	auto dpi = window ? GetDpiForWindow(window) : 0;
+	return dpi ? dpi : USER_DEFAULT_SCREEN_DPI;
+}
+
+AcrylicBrush g_flyoutSurface = nullptr;
+TextBlock g_exitPrompt = nullptr;
+CheckBox g_exitReconnect = nullptr;
+SolidColorBrush g_flyoutStroke = nullptr;
+SolidColorBrush g_flyoutText = nullptr;
+SolidColorBrush g_flyoutHover = nullptr;
+SolidColorBrush g_flyoutPressed = nullptr;
+
+void UpdateFlyoutTheme()
+{
+	using namespace winrt::Windows::UI::ViewManagement;
+	UISettings settings;
+	auto background = settings.GetColorValue(UIColorType::Background);
+	bool dark = background.R + background.G + background.B < 384;
+	bool highContrast = AccessibilitySettings().HighContrast();
+	g_xamlCanvas.RequestedTheme(dark ? ElementTheme::Dark : ElementTheme::Light);
+	if (!g_flyoutSurface)
+		return;
+	g_flyoutSurface.TintColor(dark ? winrt::Windows::UI::Color { 255, 44, 44, 44 } : winrt::Windows::UI::Color { 255, 252, 252, 252 });
+	g_flyoutSurface.TintOpacity(0.85);
+	g_flyoutSurface.TintLuminosityOpacity(dark ? 0.96 : 0.90);
+	g_flyoutSurface.AlwaysUseFallback(highContrast);
+	auto fallback = dark ? winrt::Windows::UI::Color { 255, 40, 40, 40 } : winrt::Windows::UI::Color { 255, 249, 249, 249 };
+	auto foreground = dark ? winrt::Windows::UI::Color { 255, 245, 245, 245 } : winrt::Windows::UI::Color { 255, 32, 32, 32 };
+	auto stroke = dark ? winrt::Windows::UI::Color { 40, 255, 255, 255 } : winrt::Windows::UI::Color { 38, 0, 0, 0 };
+	g_flyoutSurface.FallbackColor(highContrast ? background : fallback);
+	g_flyoutText.Color(highContrast ? settings.GetColorValue(UIColorType::Foreground) : foreground);
+	g_flyoutStroke.Color(highContrast ? settings.GetColorValue(UIColorType::Foreground) : stroke);
+	g_flyoutHover.Color(highContrast ? settings.UIElementColor(UIElementType::Highlight) : dark ? winrt::Windows::UI::Color { 15, 255, 255, 255 }
+																								: winrt::Windows::UI::Color { 9, 0, 0, 0 });
+	g_flyoutPressed.Color(highContrast ? settings.UIElementColor(UIElementType::Highlight) : dark ? winrt::Windows::UI::Color { 24, 255, 255, 255 }
+																								  : winrt::Windows::UI::Color { 20, 0, 0, 0 });
+	RefreshSecondaryTextContrast();
+}
 
 Style CreateAcrylicFlyoutStyle(winrt::Windows::UI::Xaml::Interop::TypeName const& targetType)
 {
-	AcrylicBrush ab;
-	ab.BackgroundSource(AcrylicBackgroundSource::Backdrop);
-	ab.TintOpacity(0.85);
+	if (!g_flyoutSurface) {
+		g_flyoutSurface = AcrylicBrush();
+		g_flyoutSurface.BackgroundSource(AcrylicBackgroundSource::Backdrop);
+		g_flyoutStroke = SolidColorBrush();
+		g_flyoutText = SolidColorBrush();
+		g_flyoutHover = SolidColorBrush();
+		g_flyoutPressed = SolidColorBrush();
+	}
+	UpdateFlyoutTheme();
 
 	Style s;
 	s.TargetType(targetType);
-
-	Setter bg;
-	bg.Property(Control::BackgroundProperty());
-	bg.Value(winrt::box_value(ab));
-	s.Setters().Append(bg);
-
-	Setter cr;
-	cr.Property(Control::CornerRadiusProperty());
-	cr.Value(winrt::box_value(CornerRadius { 8, 8, 8, 8 }));
-	s.Setters().Append(cr);
+	auto set = [&](DependencyProperty const& property, winrt::Windows::Foundation::IInspectable const& value) {
+		Setter setter;
+		setter.Property(property);
+		setter.Value(value);
+		s.Setters().Append(setter);
+	};
+	set(Control::BackgroundProperty(), g_flyoutSurface);
+	set(Control::ForegroundProperty(), g_flyoutText);
+	set(Control::BorderBrushProperty(), g_flyoutStroke);
+	set(Control::BorderThicknessProperty(), winrt::box_value(Thickness { 1, 1, 1, 1 }));
+	set(Control::CornerRadiusProperty(), winrt::box_value(CornerRadius { 8, 8, 8, 8 }));
+	set(Control::FontSizeProperty(), winrt::box_value(15.0));
+	set(Control::FontWeightProperty(), winrt::box_value(FontWeights::SemiBold()));
 
 	return s;
+}
+
+struct DeviceFlyoutMotion {
+	FrameworkElement presenter { nullptr };
+	TranslateTransform translation { nullptr };
+	winrt::Windows::UI::Xaml::Media::Animation::Storyboard storyboard { nullptr };
+	uint64_t generation = 0;
+	bool closing = false;
+	bool completeClose = false;
+	bool reopenAfterClose = false;
+};
+DeviceFlyoutMotion g_deviceFlyoutMotion;
+
+bool FlyoutAnimationsEnabled()
+{
+	using namespace winrt::Windows::UI::ViewManagement;
+	return UISettings().AnimationsEnabled() && !AccessibilitySettings().HighContrast() && !IsStopping();
+}
+
+void AnimateDeviceFlyout(bool closing)
+{
+	using namespace winrt::Windows::UI::Xaml::Media::Animation;
+	auto& motion = g_deviceFlyoutMotion;
+	auto generation = ++motion.generation;
+	double from = motion.translation.Y();
+	if (motion.storyboard)
+		motion.storyboard.Stop();
+	motion.closing = closing;
+	motion.translation.Y(from);
+	DoubleAnimation animation;
+	animation.From(from);
+	animation.To(closing ? motion.presenter.ActualHeight() : 0);
+	animation.Duration({ std::chrono::milliseconds(closing ? 167 : 250), DurationType::TimeSpan });
+	CubicEase ease;
+	ease.EasingMode(closing ? EasingMode::EaseIn : EasingMode::EaseOut);
+	animation.EasingFunction(ease);
+	Storyboard::SetTarget(animation, motion.translation);
+	Storyboard::SetTargetProperty(animation, L"Y");
+	motion.storyboard = Storyboard();
+	motion.storyboard.Children().Append(animation);
+	motion.storyboard.Completed([generation, closing](auto const&, auto const&) {
+		auto& current = g_deviceFlyoutMotion;
+		if (generation != current.generation)
+			return;
+		if (closing) {
+			current.completeClose = true;
+			g_xamlDeviceFlyout.Hide();
+		} else {
+			current.storyboard.Stop();
+			current.translation.Y(0);
+		}
+	});
+	motion.storyboard.Begin();
+}
+
+void BeginDeviceFlyoutEntrance()
+{
+	if (g_deviceFlyoutMotion.presenter)
+		return;
+	for (DependencyObject node = g_deviceListPanel; node; node = VisualTreeHelper::GetParent(node)) {
+		if (auto presenter = node.try_as<FlyoutPresenter>()) {
+			auto& motion = g_deviceFlyoutMotion;
+			motion.presenter = presenter;
+			motion.translation = TranslateTransform();
+			presenter.RenderTransform(motion.translation);
+			motion.translation.Y(FlyoutAnimationsEnabled() ? presenter.ActualHeight() : 0);
+			if (FlyoutAnimationsEnabled())
+				AnimateDeviceFlyout(false);
+			// The background and content stay hidden until their starting position is ready.
+			presenter.Opacity(1);
+			return;
+		}
+	}
 }
 
 std::optional<Point> GetNotifyIconPosition(HWND hWnd)
@@ -35,7 +162,7 @@ std::optional<Point> GetNotifyIconPosition(HWND hWnd)
 		return std::nullopt;
 	}
 
-	auto dpi = GetDpiForWindow(hWnd);
+	auto dpi = WindowDpi(hWnd);
 	return Point {
 		static_cast<float>((iconRect.left + (iconRect.right - iconRect.left) / 2) * USER_DEFAULT_SCREEN_DPI / dpi),
 		static_cast<float>(iconRect.top * USER_DEFAULT_SCREEN_DPI / dpi) - 12.0f
@@ -157,6 +284,14 @@ void ToggleDeviceFlyoutAtTray(HWND hWnd)
 		return;
 
 	if (g_app.deviceFlyoutVisible) {
+		if (g_deviceFlyoutMotion.completeClose) {
+			g_deviceFlyoutMotion.reopenAfterClose = !g_deviceFlyoutMotion.reopenAfterClose;
+			return;
+		}
+		if (g_deviceFlyoutMotion.closing && g_deviceFlyoutMotion.translation) {
+			AnimateDeviceFlyout(false);
+			return;
+		}
 		RecordDiagnostic(
 			L"ui",
 			L"device-flyout toggle-close recovery=" + std::wstring(IsBluetoothRecoveryActive() ? L"true" : L"false"));
@@ -169,26 +304,27 @@ void ToggleDeviceFlyoutAtTray(HWND hWnd)
 
 void SetupFlyout()
 {
-	TextBlock textBlock;
-	textBlock.Text(_(L"All connections will be closed.\nExit anyway?"));
-	textBlock.Margin({ 0, 0, 0, 12 });
+	g_exitPrompt = TextBlock();
+	g_exitPrompt.Text(_(L"All connections will be closed.\nExit anyway?"));
+	g_exitPrompt.Margin({ 0, 0, 0, 12 });
 
-	static CheckBox checkbox;
-	checkbox.IsChecked(g_app.reconnectEnabled);
-	checkbox.Content(winrt::box_value(_(L"Reconnect on next start")));
+	g_exitReconnect = CheckBox();
+	g_exitReconnect.IsChecked(g_app.reconnectEnabled);
+	g_exitReconnect.Content(winrt::box_value(_(L"Reconnect on next start")));
 
 	Button button;
 	button.Content(winrt::box_value(_(L"Exit")));
 	button.HorizontalAlignment(HorizontalAlignment::Right);
-	button.CornerRadius({ 4, 4, 4, 4 });
+	ApplyFlyoutButtonStyle(button);
 	button.Click([](const auto&, const auto&) {
-		g_app.reconnectEnabled = checkbox.IsChecked().Value();
+		auto reconnect = g_exitReconnect.IsChecked();
+		g_app.reconnectEnabled = reconnect ? reconnect.Value() : false;
 		PostMessageW(g_hWnd, WM_CLOSE, 0, 0);
 	});
 
 	StackPanel stackPanel;
-	stackPanel.Children().Append(textBlock);
-	stackPanel.Children().Append(checkbox);
+	stackPanel.Children().Append(g_exitPrompt);
+	stackPanel.Children().Append(g_exitReconnect);
 	stackPanel.Children().Append(button);
 
 	Flyout flyout;
@@ -260,19 +396,39 @@ void SetupMenu()
 	exitItem.Text(_(L"Exit"));
 	exitItem.Icon(closeIcon);
 	exitItem.Click([](const auto&, const auto&) {
-		if (!HasConnectionActivity()) {
+		auto hasActivity = HasConnectionActivity();
+		// The confirmation is also the only control for the startup preference.
+		// Skipping it whenever nothing is connected made that preference impossible
+		// to turn off without a live session or a hand-edited settings file.
+		if (!hasActivity && !g_app.reconnectEnabled) {
 			PostMessageW(g_hWnd, WM_CLOSE, 0, 0);
 			return;
 		}
+		g_exitPrompt.Text(hasActivity
+				? _(L"All connections will be closed.\nExit anyway?")
+				: _(L"Exit Aulay?"));
+		g_exitReconnect.IsChecked(g_app.reconnectEnabled);
 
-		RECT iconRect;
+		RECT iconRect {};
 		auto hr = Shell_NotifyIconGetRect(&g_niid, &iconRect);
-		if (FAILED(hr)) {
-			LOG_HR(hr);
-			return;
+		// Exit is explicit. A missing tray rect must not swallow it: anchor the
+		// same confirmation at the cursor, which is where the menu click happened.
+		if (FAILED(hr) || iconRect.right <= iconRect.left || iconRect.bottom <= iconRect.top) {
+			if (FAILED(hr))
+				LOG_HR(hr);
+			RecordDiagnostic(L"ui", L"exit confirmation tray position unavailable; using cursor");
+			POINT cursor {};
+			if (!GetCursorPos(&cursor)) {
+				cursor.x = 0;
+				cursor.y = 0;
+			}
+			iconRect.left = cursor.x;
+			iconRect.top = cursor.y;
+			iconRect.right = cursor.x + 1;
+			iconRect.bottom = cursor.y + 1;
 		}
 
-		auto dpi = GetDpiForWindow(g_hWnd);
+		auto dpi = WindowDpi(g_hWnd);
 		auto iconWidthDip = static_cast<float>((iconRect.right - iconRect.left) * USER_DEFAULT_SCREEN_DPI / dpi);
 		auto iconHeightDip = static_cast<float>((iconRect.bottom - iconRect.top) * USER_DEFAULT_SCREEN_DPI / dpi);
 
@@ -296,6 +452,20 @@ void SetupMenu()
 	menu.Items().Append(logFolderItem);
 	menu.Items().Append(exitSeparator);
 	menu.Items().Append(exitItem);
+	for (auto const& item : menu.Items()) {
+		if (auto action = item.try_as<MenuFlyoutItem>()) {
+			SolidColorBrush clear(winrt::Windows::UI::Color { 0, 0, 0, 0 });
+			action.Background(clear);
+			action.BorderBrush(clear);
+			action.Resources().Insert(winrt::box_value(L"MenuFlyoutItemRevealBackgroundPointerOver"), g_flyoutHover);
+			action.Resources().Insert(winrt::box_value(L"MenuFlyoutItemRevealBackgroundPressed"), g_flyoutPressed);
+			action.Resources().Insert(winrt::box_value(L"MenuFlyoutItemRevealBorderBrushPointerOver"), clear);
+			action.Resources().Insert(winrt::box_value(L"MenuFlyoutItemRevealBorderBrushPressed"), clear);
+			action.CornerRadius({ 8, 8, 8, 8 });
+			action.FontSize(15.0);
+			action.FontWeight(FontWeights::SemiBold());
+		}
+	}
 	menu.Opened([](const auto& sender, const auto&) {
 		auto menuItems = sender.as<MenuFlyout>().Items();
 		auto itemsCount = menuItems.Size();
@@ -315,8 +485,8 @@ void SetupDeviceList()
 {
 	g_emptyStateText = TextBlock();
 	g_emptyStateText.Text(_(L"Searching for Bluetooth audio devices..."));
-	g_emptyStateText.FontSize(13.0);
-	g_emptyStateText.Opacity(0.68);
+	g_emptyStateText.FontSize(14.0);
+	g_emptyStateText.Opacity(SecondaryTextOpacity());
 	g_emptyStateText.HorizontalAlignment(HorizontalAlignment::Center);
 	g_emptyStateText.Margin({ 8, 20, 8, 20 });
 	g_emptyStateText.TextWrapping(TextWrapping::Wrap);
@@ -329,26 +499,56 @@ void SetupDeviceList()
 	g_deviceListPanel.Width(DEVICE_LIST_WIDTH);
 	g_deviceListPanel.Padding({ DEVICE_PANEL_HORIZONTAL_PADDING, DEVICE_PANEL_TOP_PADDING, DEVICE_PANEL_HORIZONTAL_PADDING, DEVICE_PANEL_BOTTOM_PADDING });
 	g_deviceListPanel.Children().Append(g_emptyStateText);
+	g_deviceListPanel.Loaded([](auto const&, auto const&) { BeginDeviceFlyoutEntrance(); });
 
 	g_xamlDeviceFlyout = Flyout();
 	g_xamlDeviceFlyout.ShouldConstrainToRootBounds(false);
+	g_xamlDeviceFlyout.AreOpenCloseAnimationsEnabled(false);
 	g_xamlDeviceFlyout.Content(g_deviceListPanel);
 	g_xamlDeviceFlyout.Opened([](const auto&, const auto&) {
+		BeginDeviceFlyoutEntrance();
 		g_app.deviceFlyoutVisible = true;
 		InstallDeviceFlyoutDismissHooks();
 		RecordDiagnostic(
 			L"ui",
 			L"device-flyout opened recovery=" + std::wstring(IsBluetoothRecoveryActive() ? L"true" : L"false"));
 	});
+	g_xamlDeviceFlyout.Closing([](auto const&, winrt::Windows::UI::Xaml::Controls::Primitives::FlyoutBaseClosingEventArgs const& args) {
+		auto& motion = g_deviceFlyoutMotion;
+		if (motion.completeClose || !motion.presenter || !FlyoutAnimationsEnabled())
+			return;
+		args.Cancel(true);
+		if (!motion.closing)
+			AnimateDeviceFlyout(true);
+	});
 	g_xamlDeviceFlyout.Closed([](const auto&, const auto&) {
+		auto& motion = g_deviceFlyoutMotion;
+		bool reopen = std::exchange(motion.reopenAfterClose, false);
+		++motion.generation;
+		if (motion.storyboard)
+			motion.storyboard.Stop();
+		if (motion.presenter) {
+			motion.presenter.ClearValue(UIElement::OpacityProperty());
+			motion.presenter.ClearValue(UIElement::RenderTransformProperty());
+		}
+		motion.presenter = nullptr;
+		motion.translation = nullptr;
+		motion.storyboard = nullptr;
+		motion.closing = motion.completeClose = false;
 		g_app.deviceFlyoutVisible = false;
 		RemoveDeviceFlyoutDismissHooks();
 		RecordDiagnostic(
 			L"ui",
 			L"device-flyout closed recovery=" + std::wstring(IsBluetoothRecoveryActive() ? L"true" : L"false"));
 		ShowWindow(g_hWnd, SW_HIDE);
+		if (reopen && !IsStopping())
+			g_uiDispatcher.RunAsync(winrt::Windows::UI::Core::CoreDispatcherPriority::Normal, [] { ShowDeviceFlyoutAtTray(g_hWnd); });
 	});
 	Style deviceFlyoutStyle = CreateAcrylicFlyoutStyle(winrt::xaml_typename<FlyoutPresenter>());
+	Setter hiddenBeforeEntrance;
+	hiddenBeforeEntrance.Property(UIElement::OpacityProperty());
+	hiddenBeforeEntrance.Value(winrt::box_value(0.0));
+	deviceFlyoutStyle.Setters().Append(hiddenBeforeEntrance);
 	Setter deviceFlyoutPadding;
 	deviceFlyoutPadding.Property(Control::PaddingProperty());
 	deviceFlyoutPadding.Value(winrt::box_value(Thickness { 0, 0, 0, 0 }));
@@ -362,7 +562,7 @@ void SetupTrayIcon()
 {
 	// The hidden XAML host may be on a different monitor from the taskbar.
 	auto taskbar = FindWindowW(L"Shell_TrayWnd", nullptr);
-	auto dpi = GetDpiForWindow(taskbar ? taskbar : g_hWnd);
+	auto dpi = WindowDpi(taskbar ? taskbar : g_hWnd);
 	const int width = GetSystemMetricsForDpi(SM_CXSMICON, dpi), height = GetSystemMetricsForDpi(SM_CYSMICON, dpi);
 	HICON icon = nullptr;
 	winrt::check_hresult(LoadIconWithScaleDown(

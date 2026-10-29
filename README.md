@@ -62,6 +62,10 @@ msbuild Aulay.sln "-p:Configuration=Release;Platform=x64"
 
 `build.cmd` runs the same build and restores NuGet packages automatically. The executable lands at `x64/Release/Aulay64.exe`; the solution also defines x86, ARM and ARM64 configurations (ARM32 requires the Windows SDK 10.0.22621.0, which the project selects explicitly).
 
+The icon uses a 16-DIP vector grid, a 1-DIP stroke and a `#202020` foreground, rendered directly at each DPI size. Regenerate it on Windows with `powershell -STA -File tools/make-icon.ps1`; only the built-in WPF assemblies are required.
+
+The tray UI keeps the existing device-row structure, with 8-DIP corners, 15-DIP primary text, theme-aware Acrylic and thin borders. Action buttons are 124 DIP wide so the 15-DIP labels fit the button chrome. Context-menu hover/press states use flat fills. The whole device flyout slides up in 250 ms and down in 167 ms, supports reopening during dismissal, and respects system animation, high-contrast and shutdown settings.
+
 ## Tests
 
 ```sh

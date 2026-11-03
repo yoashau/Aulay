@@ -1,45 +1,36 @@
-# Rebuild the existing speaker/Bluetooth silhouette on a 16-DIP grid.
-# A 1-DIP stroke and #202020 foreground match the Windows/Portkey line weight.
-# Requires only the Windows WPF assemblies; no imaging packages or fonts.
-param([string]$Output = (Join-Path (Split-Path -Parent $PSScriptRoot) 'Aulay.ico'))
+# Build application icons with the production DirectWrite tray renderer.
+param([string]$Output = '')
 $ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName PresentationCore,WindowsBase,PresentationFramework
-$sizes = @(16,20,24,28,32,40,48,64,96,128,256)
-$speaker = [Windows.Media.Geometry]::Parse('M1.5,5.5 H4.5 L8.5,2.5 V13.5 L4.5,10.5 H1.5 Z')
-# Widen the Bluetooth lobes; keep its left edge, stem and speaker gap fixed.
-$bluetooth = [Windows.Media.Geometry]::Parse('M10.5,5.5 L15,10.5 L12.5,12.5 V3.5 L15,5.5 L10.5,10.5')
-$brush = [Windows.Media.SolidColorBrush]::new([Windows.Media.Color]::FromRgb(32,32,32))
-$pen = [Windows.Media.Pen]::new($brush,1)
-$pen.LineJoin = [Windows.Media.PenLineJoin]::Round
-$pen.StartLineCap = $pen.EndLineCap = [Windows.Media.PenLineCap]::Round
-$frames = @()
-foreach ($n in $sizes) {
-    $visual = [Windows.Media.DrawingVisual]::new()
-    $drawing = $visual.RenderOpen()
-    $drawing.PushTransform([Windows.Media.ScaleTransform]::new($n/16.0,$n/16.0))
-    $drawing.DrawGeometry($null,$pen,$speaker)
-    $drawing.DrawGeometry($null,$pen,$bluetooth)
-    $drawing.Close()
-    $bitmap = [Windows.Media.Imaging.RenderTargetBitmap]::new($n,$n,96,96,[Windows.Media.PixelFormats]::Pbgra32)
-    $bitmap.Render($visual)
-    $encoder = [Windows.Media.Imaging.PngBitmapEncoder]::new()
-    $encoder.Frames.Add([Windows.Media.Imaging.BitmapFrame]::Create($bitmap))
-    $stream = [IO.MemoryStream]::new()
-    try { $encoder.Save($stream); $frames += ,$stream.ToArray() } finally { $stream.Dispose() }
+if ($env:PATHEXT -notmatch '(^|;)\.EXE(;|$)') { $env:PATHEXT = '.COM;.EXE;.BAT;.CMD;' + $env:PATHEXT }
+$root = if ($PSScriptRoot) { Split-Path -Parent $PSScriptRoot } else { (Get-Location).Path }
+if (-not $Output) { $Output = Join-Path $root 'Aulay.ico' }
+$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+$vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+$vcvars = if ($vs) { Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat' } else {
+    # Also support an existing build-tools installation absent from vswhere's catalog.
+    Get-ChildItem (Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\*\*\VC\Auxiliary\Build\vcvars64.bat') -ErrorAction SilentlyContinue |
+        Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
 }
-$stream = [IO.File]::Create($Output)
-$writer = [IO.BinaryWriter]::new($stream)
+if (-not $vcvars) { throw 'Visual Studio C++ build tools are required to run the production icon renderer.' }
+$wil = Join-Path $root 'packages\Microsoft.Windows.ImplementationLibrary.1.0.200519.2\include'
+if (-not (Test-Path (Join-Path $wil 'wil\common.h'))) { throw 'Restore the solution NuGet packages first.' }
+$scratch = Join-Path $env:LOCALAPPDATA ('AulayBuild\icons-' + [Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $scratch -Force | Out-Null
 try {
-    $writer.Write([uint16]0); $writer.Write([uint16]1); $writer.Write([uint16]$sizes.Count)
-    $offset = 6 + 16 * $sizes.Count
-    for ($i=0; $i -lt $sizes.Count; $i++) {
-        $dimension = if ($sizes[$i] -eq 256) {0} else {$sizes[$i]}
-        $writer.Write([byte]$dimension); $writer.Write([byte]$dimension)
-        $writer.Write([byte]0); $writer.Write([byte]0)
-        $writer.Write([uint16]1); $writer.Write([uint16]32)
-        $writer.Write([uint32]$frames[$i].Length); $writer.Write([uint32]$offset)
-        $offset += $frames[$i].Length
-    }
-    foreach ($frame in $frames) { $writer.Write([byte[]]$frame) }
-} finally { $writer.Dispose() }
-Write-Output "Generated 11 native icon sizes: $Output"
+    Copy-Item (Join-Path $root 'tools\IconGenerator.cpp') $scratch
+    Copy-Item (Join-Path $root 'TrayIcon.hpp') $scratch
+    $command = @"
+@echo off
+call "$vcvars" >nul
+if errorlevel 1 exit /b 1
+cd /d "$scratch"
+cl.exe /nologo /std:c++20 /EHsc /MD /utf-8 /I"$wil" IconGenerator.cpp /Fe:IconGenerator.exe WindowsApp.lib advapi32.lib user32.lib gdi32.lib
+if errorlevel 1 exit /b 1
+IconGenerator.exe "$Output"
+exit /b %ERRORLEVEL%
+"@
+    $script = Join-Path $scratch 'generate.cmd'
+    [IO.File]::WriteAllText($script, $command, [Text.Encoding]::Default)
+    & $env:ComSpec /d /c $script
+    if ($LASTEXITCODE -ne 0) { throw 'Application icon generation failed.' }
+} finally { Remove-Item -LiteralPath $scratch -Recurse -Force }

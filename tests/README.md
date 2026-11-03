@@ -21,6 +21,7 @@ Requirements: Python 3, Git, and a C++17 compiler (GCC or Clang for the portable
 | `test_debug_markers.py` | Portable + C++17 | Executes marker/disconnect functions with fake UI/connections; checks unified diagnostics and Forced request dispatch |
 | `test_debug_timeline.py` | Portable | Source-level collector and timeline constraints |
 | `run_windows_tests.cmd` | Windows, Release x64 build | Native recovery authorization/cancellation/expiry gates, event capture/fallback, deadlines, routing, settings, preparation and creation fault harnesses |
+| `tray_icon_test.cpp` (via `run_windows_tests.cmd`) | Windows | Production icon at 100–400% DPI, light/dark/contrast foregrounds, grayscale edges, premultiplied alpha, centering, HICON dimensions/depth, enlarged glyph stroke equality and GDI lifetime |
 | `run_debug_audio_test.cmd` | Windows, unified Release x64 build | Diagnostic snapshot formatting and collection |
 | `run_debug_monitor_test.cmd` | Windows, unified Release x64 build | Native journal, queue, rotation, retention and callback behavior |
 | `check_format.py` | Portable | clang-format compliance over the app sources (CI pins clang-format 19.1.5) |

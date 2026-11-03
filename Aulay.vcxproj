@@ -343,6 +343,7 @@
     <ClInclude Include="BluetoothRecovery.hpp" />
     <ClInclude Include="ConnectionFlow.hpp" />
     <ClInclude Include="DeviceWatcher.hpp" />
+    <ClInclude Include="TrayIcon.hpp" />
     <ClInclude Include="TrayPanel.hpp" />
     <ClInclude Include="SettingsSave.hpp" />
     <ClInclude Include="Version.h" />

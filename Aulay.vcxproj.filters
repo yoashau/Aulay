@@ -46,6 +46,9 @@
     <ClInclude Include="BluetoothRecovery.hpp"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="ConnectionFlow.hpp"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="DeviceWatcher.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="TrayIcon.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="TrayPanel.hpp"><Filter>Header Files</Filter></ClInclude>
 
     <ClInclude Include="AudioFlowPolicy.hpp"><Filter>Header Files</Filter></ClInclude>

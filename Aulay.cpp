@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "TrayIcon.hpp"
 #include "DebugAudioMonitor.hpp"
 #include "Aulay.h"
 #include <winrt/Windows.Foundation.h>

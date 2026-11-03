@@ -564,13 +564,7 @@ void SetupTrayIcon()
 	auto taskbar = FindWindowW(L"Shell_TrayWnd", nullptr);
 	auto dpi = WindowDpi(taskbar ? taskbar : g_hWnd);
 	const int width = GetSystemMetricsForDpi(SM_CXSMICON, dpi), height = GetSystemMetricsForDpi(SM_CYSMICON, dpi);
-	HICON icon = nullptr;
-	winrt::check_hresult(LoadIconWithScaleDown(
-		g_hInst,
-		MAKEINTRESOURCEW(IDI_AULAY_TRAY),
-		width,
-		height,
-		&icon));
+	auto icon = AulayTrayIcon::Create(width, height);
 	if (g_hTrayIcon)
 		DestroyIcon(g_hTrayIcon);
 	g_hTrayIcon = icon;

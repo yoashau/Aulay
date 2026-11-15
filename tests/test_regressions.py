@@ -330,7 +330,7 @@ def run():
     connect = function('ConnectDeviceAsync')
     recovery = function('EnsureBluetoothReady')
     checks = {
-        'late Off always receives a compensating On request': '!offRequested && radio.State() == RadioState::On' in function('RunBluetoothRecoveryTransaction'),
+        'late Off always receives a compensating On request': 'if (!offRequested) {' in function('RunBluetoothRecoveryTransaction') and 'if (!onConfirmed) {' in function('RunBluetoothRecoveryTransaction'),
         'attempt exceptions release placeholder sessions': 'if (FAILED(attemptError))' in worker and 'CloseConnectionSession(request.deviceId, request.generation, false)' in worker,
         'radio wait is asynchronous': 'resume_on_signal' in function('WaitForRadioState') and '->wait(' not in function('WaitForRadioState'),
         'recovery join uses completion signal': 'resume_on_signal(completion->signal.get())' in recovery,

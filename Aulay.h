@@ -23,6 +23,9 @@ constexpr UINT WM_NOTIFYICON = WM_APP + 1;
 constexpr UINT WM_CONNECTDEVICE = WM_APP + 2;
 constexpr UINT WM_FINISHSHUTDOWN = WM_APP + 3;
 constexpr UINT WM_DISMISSDEVICEFLYOUT = WM_APP + 4;
+// A distinct message for each opening rejects clicks queued by an old hook.
+constexpr UINT WM_DEVICEFLYOUTMOUSE_FIRST = WM_APP + 0x100;
+constexpr UINT WM_DEVICEFLYOUTMOUSE_COUNT = 0x1000;
 
 HINSTANCE g_hInst;
 HWND g_hWnd;

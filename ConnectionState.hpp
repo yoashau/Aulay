@@ -45,16 +45,8 @@ bool IsRadioDeactivationGraceActive()
 	return GetTickCount64() < g_radioTransitionGraceUntilMs.load();
 }
 
-// WM_ACTIVATEAPP only reports the transition from active to inactive: once the
-// host window is already inactive, later clicks elsewhere raise no further
-// message and the device flyout would stay stuck on screen (for example after
-// a deactivation deferred by the radio-transition grace window). While the
-// flyout is visible, a low-level mouse hook and a foreground-event hook watch
-// for interaction with windows outside this process and dismiss it through
-// WM_DISMISSDEVICEFLYOUT. Both hooks are installed on and pump through the UI
-// thread only while the flyout is open. The mouse hook treats every outside
-// click as explicit user intent, so it deliberately ignores the grace window.
-HHOOK g_deviceFlyoutMouseHook = nullptr;
+// The foreground hook complements the mouse hook after the host window has
+// already been deactivated, including after a radio-transition grace window.
 HWINEVENTHOOK g_deviceFlyoutForegroundHook = nullptr;
 
 bool IsStopping()

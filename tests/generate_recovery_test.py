@@ -57,7 +57,11 @@ struct Scenario {
  std::atomic<RadioState> state{RadioState::On};
  bool denyOff=false, denyOn=false;
  int offDelay=0, onDelay=0;
+ int stateDelay=0, secondStateDelay=0;
+ bool onDuringRestoreCheck=false;
  std::atomic_int offCalls{0}, onCalls{0};
+ std::atomic_int stateCalls{0};
+ std::atomic<DWORD> stateThread{0};
  std::shared_ptr<AsyncCancellation> cancelAfterOff;
  std::mutex mutex;
  std::function<void()> changed;
@@ -67,7 +71,14 @@ struct MockRadio {
  MockRadio(std::nullptr_t=nullptr) {}
  MockRadio(std::shared_ptr<Scenario> s):scenario(std::move(s)) {}
  explicit operator bool() const { return !!scenario; }
- RadioState State() const { return scenario->state; }
+ RadioState State() const {
+  scenario->stateThread=GetCurrentThreadId();
+  auto call=++scenario->stateCalls;
+  if(scenario->stateDelay)std::this_thread::sleep_for(milliseconds(scenario->stateDelay));
+  if(call==2&&scenario->secondStateDelay)std::this_thread::sleep_for(milliseconds(scenario->secondStateDelay));
+  if(call==2&&scenario->onDuringRestoreCheck)scenario->state=RadioState::On;
+  return scenario->state;
+ }
  static IAsyncOperation<RadioAccessStatus> RequestAccessAsync() { co_return RadioAccessStatus::Allowed; }
  struct Revoker {
   std::shared_ptr<Scenario> scenario;
@@ -98,6 +109,7 @@ struct MockRadio {
 };
 '''
 code+=ns['function']('SetRadioStateInBackground').replace('winrt::Windows::Devices::Radios::Radio radio','MockRadio radio')+'\n'
+code+=ns['function']('GetRadioStateInBackground').replace('winrt::Windows::Devices::Radios::Radio radio','MockRadio radio')+'\n'
 code+=ns['function']('WaitForRadioState').replace('winrt::Windows::Devices::Radios::Radio radio','MockRadio radio').replace('Radio const& sender','MockRadio const& sender')+'\n'
 code+=ns['function']('RunBluetoothRecoveryTransaction').replace('winrt::Windows::Devices::Radios::Radio radio','MockRadio radio').replace('Radio::RequestAccessAsync()', 'MockRadio::RequestAccessAsync()')+'\n'
 code+=r'''
@@ -109,6 +121,15 @@ int main(){
   logEntries.clear();g_app.radioAccess.reset();
   return static_cast<BluetoothRecoveryResult>(RunBluetoothRecoveryTransaction(MockRadio(scenario),steady_clock::now()+milliseconds(200),cancel).get());
  };
+ { auto s=std::make_shared<Scenario>();s->stateDelay=120;auto caller=GetCurrentThreadId();
+  auto start=steady_clock::now();auto pending=WaitForRadioState(MockRadio(s),RadioState::On,milliseconds(300));
+  check(steady_clock::now()-start<milliseconds(80),"radio wait does not read state on caller");
+  check(pending.get()&&s->stateThread!=caller,"radio wait reads state on a worker");
+ }
+ { auto s=std::make_shared<Scenario>();s->stateDelay=350;auto start=steady_clock::now();
+  check(run(s)==BluetoothRecoveryResult::OperationTimedOut,"slow initial radio state obeys deadline");
+  check(s->offCalls==0&&steady_clock::now()-start<milliseconds(300),"slow state cannot block the caller or request Off");
+ }
  { auto s=std::make_shared<Scenario>();auto start=steady_clock::now();
   check(run(s)==BluetoothRecoveryResult::Success,"normal transaction succeeds");
   check(s->offCalls==1&&s->onCalls==1&&s->state==RadioState::On,"normal Off then On");
@@ -137,11 +158,17 @@ int main(){
  { auto s=std::make_shared<Scenario>();s->state=RadioState::Off;
   check(run(s)==BluetoothRecoveryResult::Success&&s->offCalls==0&&s->onCalls==1,"initially Off goes directly to On");
  }
+ { auto s=std::make_shared<Scenario>();s->state=RadioState::Off;s->onDuringRestoreCheck=true;
+  check(run(s)==BluetoothRecoveryResult::Success&&s->onCalls==0,"concurrent On avoids a redundant request");
+ }
+ { auto s=std::make_shared<Scenario>();s->state=RadioState::Off;s->secondStateDelay=100;
+  check(run(s)==BluetoothRecoveryResult::Success&&s->onCalls==1&&s->state==RadioState::On,"slow restore check still requests On");
+ }
  { auto s=std::make_shared<Scenario>();s->denyOn=true;
   check(run(s)==BluetoothRecoveryResult::TurnOnDenied,"On denied reported");
  }
  // Give cancelled synthetic delay coroutines time to release their private state.
- std::this_thread::sleep_for(milliseconds(200));
+ std::this_thread::sleep_for(milliseconds(400));
  std::cout<<"RECOVERY_FAULTS checks="<<checked<<" failures="<<failed<<'\n';
  return failed?1:0;
 }

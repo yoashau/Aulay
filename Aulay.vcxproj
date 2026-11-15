@@ -345,6 +345,7 @@
     <ClInclude Include="DeviceWatcher.hpp" />
     <ClInclude Include="TrayIcon.hpp" />
     <ClInclude Include="TrayPanel.hpp" />
+    <ClInclude Include="FlyoutMouseHook.hpp" />
     <ClInclude Include="SettingsSave.hpp" />
     <ClInclude Include="Version.h" />
     <ClInclude Include="BuildVariant.hpp" />

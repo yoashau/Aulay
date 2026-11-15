@@ -3,6 +3,7 @@
 // Tray shell UI: tray icon, the device flyout with its outside-click
 // dismissal hooks, the exit confirmation flyout and the context menu.
 #include "Aulay.h"
+#include "FlyoutMouseHook.hpp"
 #include <winrt/Windows.UI.ViewManagement.h>
 #include <winrt/Windows.UI.Xaml.Media.Animation.h>
 
@@ -90,6 +91,9 @@ struct DeviceFlyoutMotion {
 	bool reopenAfterClose = false;
 };
 DeviceFlyoutMotion g_deviceFlyoutMotion;
+FlyoutMouseHook g_deviceFlyoutMouseHook;
+UINT g_deviceFlyoutMouseMessage = 0;
+uint64_t g_deviceFlyoutMouseGeneration = 0;
 
 bool FlyoutAnimationsEnabled()
 {
@@ -174,28 +178,19 @@ void DismissDeviceFlyoutFromHook()
 	PostMessageW(g_hWnd, WM_DISMISSDEVICEFLYOUT, 0, 0);
 }
 
-LRESULT CALLBACK DeviceFlyoutMouseHook(int nCode, WPARAM wParam, LPARAM lParam)
+void HandleDeviceFlyoutMouseClick(POINT point)
 {
-	if (nCode >= 0 && g_app.deviceFlyoutVisible) {
-		UINT message = static_cast<UINT>(wParam);
-		if (message == WM_LBUTTONDOWN || message == WM_RBUTTONDOWN
-			|| message == WM_MBUTTONDOWN || message == WM_XBUTTONDOWN
-			|| message == WM_NCLBUTTONDOWN || message == WM_NCRBUTTONDOWN) {
-			auto info = reinterpret_cast<MSLLHOOKSTRUCT*>(lParam);
-			// A click on our own tray icon is the shell's toggle gesture; it must
-			// not race a hook-initiated dismissal or the flyout reopens itself.
-			RECT iconRect {};
-			bool onTrayIcon = SUCCEEDED(Shell_NotifyIconGetRect(&g_niid, &iconRect)) && PtInRect(&iconRect, info->pt);
-			if (!onTrayIcon) {
-				HWND target = WindowFromPoint(info->pt);
-				DWORD processId = 0;
-				GetWindowThreadProcessId(target, &processId);
-				if (processId != GetCurrentProcessId())
-					DismissDeviceFlyoutFromHook();
-			}
-		}
+	// A click on our own tray icon is the shell's toggle gesture; it must
+	// not race a hook-initiated dismissal or the flyout reopens itself.
+	RECT iconRect {};
+	bool onTrayIcon = SUCCEEDED(Shell_NotifyIconGetRect(&g_niid, &iconRect)) && PtInRect(&iconRect, point);
+	if (!onTrayIcon) {
+		HWND target = WindowFromPoint(point);
+		DWORD processId = 0;
+		GetWindowThreadProcessId(target, &processId);
+		if (processId != GetCurrentProcessId())
+			DismissDeviceFlyoutFromHook();
 	}
-	return CallNextHookEx(nullptr, nCode, wParam, lParam);
 }
 
 void CALLBACK DeviceFlyoutForegroundHook(HWINEVENTHOOK hook, DWORD event, HWND hwnd,
@@ -215,13 +210,13 @@ void CALLBACK DeviceFlyoutForegroundHook(HWINEVENTHOOK hook, DWORD event, HWND h
 
 void InstallDeviceFlyoutDismissHooks()
 {
-	if (IsStopping() || g_deviceFlyoutMouseHook || g_deviceFlyoutForegroundHook)
+	if (IsStopping() || g_deviceFlyoutMouseHook.Active() || g_deviceFlyoutForegroundHook)
 		return;
-	// LL mouse hooks and OUTOFCONTEXT event hooks are delivered on the
-	// installing thread while it pumps messages; the UI thread qualifies.
-	g_deviceFlyoutMouseHook = SetWindowsHookExW(WH_MOUSE_LL, DeviceFlyoutMouseHook, nullptr, 0);
-	if (!g_deviceFlyoutMouseHook)
-		LOG_LAST_ERROR();
+	// The mouse hook runs on its own message thread. Only click coordinates
+	// cross to the UI, where the existing tray and outside-click rules apply.
+	g_deviceFlyoutMouseMessage = WM_DEVICEFLYOUTMOUSE_FIRST + static_cast<UINT>(++g_deviceFlyoutMouseGeneration % WM_DEVICEFLYOUTMOUSE_COUNT);
+	if (!g_deviceFlyoutMouseHook.Start(g_hWnd, g_deviceFlyoutMouseMessage))
+		OutputDebugStringW(L"Aulay: unable to start the device flyout mouse hook.\n");
 	g_deviceFlyoutForegroundHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND,
 		EVENT_SYSTEM_FOREGROUND, nullptr, DeviceFlyoutForegroundHook, 0, 0, WINEVENT_OUTOFCONTEXT);
 	if (!g_deviceFlyoutForegroundHook)
@@ -230,11 +225,8 @@ void InstallDeviceFlyoutDismissHooks()
 
 void RemoveDeviceFlyoutDismissHooks()
 {
-	if (g_deviceFlyoutMouseHook) {
-		if (!UnhookWindowsHookEx(g_deviceFlyoutMouseHook))
-			LOG_LAST_ERROR();
-		g_deviceFlyoutMouseHook = nullptr;
-	}
+	g_deviceFlyoutMouseMessage = 0;
+	g_deviceFlyoutMouseHook.Stop();
 	if (g_deviceFlyoutForegroundHook) {
 		if (!UnhookWinEvent(g_deviceFlyoutForegroundHook))
 			LOG_LAST_ERROR();

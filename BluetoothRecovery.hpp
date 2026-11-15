@@ -28,6 +28,13 @@ winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Devices::Radios::Rad
 	co_return co_await operation;
 }
 
+winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Devices::Radios::RadioState> GetRadioStateInBackground(
+	winrt::Windows::Devices::Radios::Radio radio)
+{
+	co_await winrt::resume_background();
+	co_return radio.State();
+}
+
 winrt::Windows::Foundation::IAsyncAction StartConnectionInBackground(AudioPlaybackConnection connection)
 {
 	auto cancellation = co_await winrt::get_cancellation_token();
@@ -63,6 +70,10 @@ winrt::Windows::Foundation::IAsyncOperation<bool> WaitForRadioState(
 
 	if (!radio)
 		co_return false;
+
+	// State and event subscription can enter the Bluetooth device stack. Keep
+	// both off the UI thread even when this operation is created there.
+	co_await winrt::resume_background();
 
 	// Subscribe before checking the current value so a transition between the
 	// subscription and the check cannot be lost. The Win32 event wakes the waiter
@@ -117,7 +128,7 @@ winrt::Windows::Foundation::IAsyncOperation<int32_t> RunBluetoothRecoveryTransac
 			primaryResult = BluetoothRecoveryResult::AccessDenied;
 		else if (!radio)
 			primaryResult = BluetoothRecoveryResult::RadioUnavailable;
-		else if (radio.State() == RadioState::Off) {
+		else if (co_await AwaitBounded(GetRadioStateInBackground(radio), primaryDeadline, cancellation) == RadioState::Off) {
 			offConfirmed = true;
 			primaryResult = BluetoothRecoveryResult::NotRequired;
 		} else {
@@ -156,9 +167,18 @@ winrt::Windows::Foundation::IAsyncOperation<int32_t> RunBluetoothRecoveryTransac
 	if (radio && (offRequested || offConfirmed)) {
 		auto restoreDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(BLUETOOTH_RESTORE_TIMEOUT_MS);
 		try {
-			if (!offRequested && radio.State() == RadioState::On)
-				onConfirmed = true;
-			else {
+			if (!offRequested) {
+				// A concurrent user action may already have restored an initially-Off
+				// radio. A slow state query must leave time to request On ourselves.
+				try {
+					auto checkBudget = std::chrono::milliseconds((std::min)(250u, BLUETOOTH_RESTORE_TIMEOUT_MS / 4));
+					auto checkDeadline = (std::min)(restoreDeadline, std::chrono::steady_clock::now() + checkBudget);
+					onConfirmed = co_await AwaitBounded(GetRadioStateInBackground(radio), checkDeadline) == RadioState::On;
+				} catch (...) {
+					RecordDiagnostic(L"bluetooth", L"restore state check unavailable; requesting on");
+				}
+			}
+			if (!onConfirmed) {
 				co_await SetBluetoothRecoveryStage(BluetoothRecoveryStage::TurningOn);
 				auto onStarted = std::chrono::steady_clock::now();
 				NoteRadioTransitionStarted(BLUETOOTH_RESTORE_TIMEOUT_MS);

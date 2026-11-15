@@ -29,6 +29,24 @@ bool HasRoundedPaintedSurface(DependencyObject node)
     return false;
 }
 
+std::optional<POINT> FindFlyoutClickPoint(bool inside, RECT const& tray)
+{
+    auto left = GetSystemMetrics(SM_XVIRTUALSCREEN);
+    auto top = GetSystemMetrics(SM_YVIRTUALSCREEN);
+    auto width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+    auto height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+    for (int y = 0; y < height; y += 20) {
+        for (int x = 0; x < width; x += 20) {
+            POINT point { left + x, top + y };
+            if (PtInRect(&tray, point)) continue;
+            DWORD process = 0;
+            GetWindowThreadProcessId(WindowFromPoint(point), &process);
+            if ((process == GetCurrentProcessId()) == inside) return point;
+        }
+    }
+    return {};
+}
+
 winrt::fire_and_forget RunFlyoutStyleFixture()
 {
     try {
@@ -81,6 +99,8 @@ winrt::fire_and_forget RunFlyoutStyleFixture()
             if (auto control = node.try_as<FlyoutPresenter>()) { presenter = control; break; }
         }
         require(presenter && presenter.ActualHeight() > 0, L"production presenter laid out");
+        require(g_deviceFlyoutMouseHook.WaitUntilReady(2000), L"mouse hook installs on its worker");
+        auto firstMouseMessage = g_deviceFlyoutMouseMessage;
         require(quick.ActualWidth() == DEVICE_ACTION_BUTTON_WIDTH && forced.ActualWidth() == quick.ActualWidth(), L"shared action button width");
         TextBlock labelProbe;
         labelProbe.FontFamily(quick.FontFamily());
@@ -111,6 +131,32 @@ winrt::fire_and_forget RunFlyoutStyleFixture()
         co_await winrt::resume_after(std::chrono::milliseconds(350));
         co_await winrt::resume_foreground(dispatcher);
         require(g_app.deviceFlyoutVisible, L"reopen succeeds");
+        require(g_deviceFlyoutMouseHook.WaitUntilReady(2000), L"mouse hook installs again after reopen");
+        require(g_deviceFlyoutMouseMessage != firstMouseMessage, L"reopen uses a new click generation");
+        RECT tray {};
+        require(SUCCEEDED(Shell_NotifyIconGetRect(&g_niid, &tray)), L"tray rectangle available");
+        auto outside = FindFlyoutClickPoint(false, tray);
+        auto inside = FindFlyoutClickPoint(true, tray);
+        require(outside.has_value() && inside.has_value(), L"inside and outside click targets found");
+        auto postClick = [](UINT message, POINT point) {
+            PostMessageW(g_hWnd, message, static_cast<WPARAM>(static_cast<INT_PTR>(point.x)), static_cast<LPARAM>(point.y));
+        };
+        postClick(firstMouseMessage, *outside);
+        postClick(g_deviceFlyoutMouseMessage, *inside);
+        postClick(g_deviceFlyoutMouseMessage, { (tray.left + tray.right) / 2, (tray.top + tray.bottom) / 2 });
+        co_await winrt::resume_after(std::chrono::milliseconds(250));
+        co_await winrt::resume_foreground(dispatcher);
+        require(g_app.deviceFlyoutVisible, L"stale, own-window and tray clicks do not dismiss");
+        NoteRadioTransitionStarted(1000);
+        postClick(g_deviceFlyoutMouseMessage, *outside);
+        co_await winrt::resume_after(std::chrono::milliseconds(450));
+        co_await winrt::resume_foreground(dispatcher);
+        require(!g_app.deviceFlyoutVisible, L"outside click dismisses during radio grace");
+        NoteRadioTransitionSettled();
+        g_xamlDeviceFlyout.ShowAt(g_xamlCanvas, options);
+        co_await winrt::resume_after(std::chrono::milliseconds(350));
+        co_await winrt::resume_foreground(dispatcher);
+        require(g_app.deviceFlyoutVisible, L"reopen after outside click succeeds");
         g_xamlDeviceFlyout.Hide();
         if (FlyoutAnimationsEnabled()) {
             co_await winrt::resume_after(std::chrono::milliseconds(65));

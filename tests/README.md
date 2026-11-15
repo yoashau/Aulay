@@ -20,7 +20,7 @@ Requirements: Python 3, Git, and a C++17 compiler (GCC or Clang for the portable
 | `test_hardening.py` | Portable | Source-level deadline, routing and settings constraints |
 | `test_debug_markers.py` | Portable + C++17 | Executes marker/disconnect functions with fake UI/connections; checks unified diagnostics and Forced request dispatch |
 | `test_debug_timeline.py` | Portable | Source-level collector and timeline constraints |
-| `run_windows_tests.cmd` | Windows, Release x64 build | Native recovery authorization/cancellation/expiry gates, event capture/fallback, deadlines, routing, settings, preparation and creation fault harnesses |
+| `run_windows_tests.cmd` | Windows, Release x64 build | Native mouse-hook lifecycle, recovery authorization/cancellation/expiry gates, event capture/fallback, deadlines, routing, settings, preparation and creation fault harnesses |
 | `tray_icon_test.cpp` (via `run_windows_tests.cmd`) | Windows | Production icon at 100–400% DPI, light/dark/contrast foregrounds, grayscale edges, premultiplied alpha, centering, HICON dimensions/depth, enlarged glyph stroke equality and GDI lifetime |
 | `run_debug_audio_test.cmd` | Windows, unified Release x64 build | Diagnostic snapshot formatting and collection |
 | `run_debug_monitor_test.cmd` | Windows, unified Release x64 build | Native journal, queue, rotation, retention and callback behavior |
@@ -41,6 +41,7 @@ Native scripts run in a VS x64 developer shell with C++20 support and restored N
 These are deliberate opt-in checks, not CI coverage:
 
 - `run_windows_tests.cmd --probe`: read-only routing discovery on the local computer.
+- `run_windows_tests.cmd --input`: sends tagged one-pixel out-and-back mouse movements to check that the hook forwards input while its target thread is blocked; requires an interactive desktop.
 - `run_debug_monitor_test.cmd --audio`: creates the test program's own silent WASAPI session to verify endpoint/session events.
 - `generate_flyout_ui_fixture.py DISPOSABLE_SOURCE_DIRECTORY`: instrument an existing disposable source copy, build it normally, and run its EXE. It automatically checks the production flyout/button/menu painted corners, existing button widths, slide-in position, delayed close and rapid reopen. The separate fixture mutex permits the real application to keep running. Settings paths stay beside the fixture EXE; the device watcher and remembered-device startup are disabled, and no Bluetooth connections or radio writes are performed. Read `[style-test]` lines in its normal diagnostic log; success is `FLYOUT_STYLE_RESULT=PASS`. Never distribute the fixture.
 - `generate_debug_ui_fixture.py OUTPUT_CPP` and `run_debug_ui_smoke.ps1 -ExePath FIXTURE_EXE`: generate, build and exercise an instrumented UI fixture in a disposable source copy. The fixture source replaces `Aulay.cpp` only in that copy; build it with the normal unified build. Use a dedicated executable directory because the smoke script writes `Aulay.json` beside the fixture EXE. Never distribute this instrumented executable.

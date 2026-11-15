@@ -210,6 +210,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		return DefWindowProcW(hWnd, message, wParam, lParam);
 	default:
+		if (message >= WM_DEVICEFLYOUTMOUSE_FIRST && message < WM_DEVICEFLYOUTMOUSE_FIRST + WM_DEVICEFLYOUTMOUSE_COUNT) {
+			if (message == g_deviceFlyoutMouseMessage && g_app.deviceFlyoutVisible && !IsStopping())
+				HandleDeviceFlyoutMouseClick({ static_cast<LONG>(static_cast<INT_PTR>(wParam)), static_cast<LONG>(lParam) });
+			return 0;
+		}
 		if (!IsStopping() && WM_TASKBAR_CREATED && message == WM_TASKBAR_CREATED) {
 			UpdateFlyoutTheme();
 			SetupTrayIcon();

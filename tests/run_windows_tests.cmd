@@ -9,6 +9,10 @@ cl /nologo /std:c++20 /EHsc /MD /utf-8 /I"packages\Microsoft.Windows.Implementat
 if not "%ERRORLEVEL%"=="0" goto failed
 "%TEST_OUTPUT%\tray_icon_test.exe"
 if not "%ERRORLEVEL%"=="0" goto failed
+cl /nologo /std:c++20 /EHsc /MD /utf-8 /I. /I"packages\Microsoft.Windows.ImplementationLibrary.1.0.200519.2\include" tests\windows_flyout_mouse.cpp /Fo:"%TEST_OUTPUT%\windows_flyout_mouse.obj" /Fe:"%TEST_OUTPUT%\windows_flyout_mouse.exe" user32.lib
+if not "%ERRORLEVEL%"=="0" goto failed
+"%TEST_OUTPUT%\windows_flyout_mouse.exe" %*
+if not "%ERRORLEVEL%"=="0" goto failed
 cl /nologo /std:c++20 /EHsc /MD /utf-8 /I"packages\Microsoft.Windows.ImplementationLibrary.1.0.200519.2\include" tests\windows_hardening.cpp /Fo:"%TEST_OUTPUT%\windows_hardening.obj" /Fe:"%TEST_OUTPUT%\windows_hardening.exe" WindowsApp.lib comctl32.lib shell32.lib advapi32.lib user32.lib
 if not "%ERRORLEVEL%"=="0" goto failed
 "%TEST_OUTPUT%\windows_hardening.exe" %*

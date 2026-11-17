@@ -188,14 +188,25 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		QueueRememberedDevices();
 		break;
 	case WM_DISMISSDEVICEFLYOUT:
-		// An outside click or foreground change is explicit user intent; the
-		// radio-transition grace window does not apply here.
-		if (g_xamlDeviceFlyout && g_app.deviceFlyoutVisible && !IsStopping()) {
+		// Outside input or an accepted foreground change is explicit user intent;
+		// reject dismissal queued by an earlier opening of the flyout.
+		if (wParam == g_deviceFlyoutActivityMessage && g_deviceFlyoutActivityMessage
+			&& g_xamlDeviceFlyout && g_app.deviceFlyoutVisible && !IsStopping()) {
 			g_deviceFlyoutMotion.reopenAfterClose = false;
 			RecordDiagnostic(L"ui", L"device-flyout dismissed by outside interaction");
 			g_xamlDeviceFlyout.Hide();
 		}
 		break;
+	case WM_TIMER:
+		if (wParam == g_deviceFlyoutActivityMessage && g_deviceFlyoutActivityMessage) {
+			KillTimer(hWnd, wParam);
+			// Release first so a concurrent movement cannot be lost after this
+			// final position check.
+			g_deviceFlyoutInputHook.AcknowledgeMovement();
+			HandleDeviceFlyoutFullscreenMovement();
+			return 0;
+		}
+		return DefWindowProcW(hWnd, message, wParam, lParam);
 	case WM_FINISHSHUTDOWN:
 		DestroyWindow(hWnd);
 		return 0;
@@ -213,6 +224,20 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		if (message >= WM_DEVICEFLYOUTMOUSE_FIRST && message < WM_DEVICEFLYOUTMOUSE_FIRST + WM_DEVICEFLYOUTMOUSE_COUNT) {
 			if (message == g_deviceFlyoutMouseMessage && g_app.deviceFlyoutVisible && !IsStopping())
 				HandleDeviceFlyoutMouseClick({ static_cast<LONG>(static_cast<INT_PTR>(wParam)), static_cast<LONG>(lParam) });
+			return 0;
+		}
+		if (message >= WM_DEVICEFLYOUTACTIVITY_FIRST && message < WM_DEVICEFLYOUTACTIVITY_FIRST + WM_DEVICEFLYOUTMOUSE_COUNT) {
+			if (message == g_deviceFlyoutActivityMessage && g_app.deviceFlyoutVisible && !IsStopping()) {
+				if (lParam)
+					HandleDeviceFlyoutKeyboardActivity(reinterpret_cast<HWND>(wParam));
+				else {
+					HandleDeviceFlyoutFullscreenMovement();
+					if (!SetTimer(hWnd, g_deviceFlyoutActivityMessage, 100, nullptr)) {
+						g_deviceFlyoutInputHook.AcknowledgeMovement();
+						HandleDeviceFlyoutFullscreenMovement();
+					}
+				}
+			}
 			return 0;
 		}
 		if (!IsStopping() && WM_TASKBAR_CREATED && message == WM_TASKBAR_CREATED) {

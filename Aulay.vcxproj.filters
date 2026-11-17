@@ -50,7 +50,7 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="TrayPanel.hpp"><Filter>Header Files</Filter></ClInclude>
-    <ClInclude Include="FlyoutMouseHook.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="FlyoutInputHook.hpp"><Filter>Header Files</Filter></ClInclude>
 
     <ClInclude Include="AudioFlowPolicy.hpp"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="BluetoothRouting.hpp">

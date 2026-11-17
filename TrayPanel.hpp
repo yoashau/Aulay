@@ -1,9 +1,9 @@
 #pragma once
 
-// Tray shell UI: tray icon, the device flyout with its outside-click
-// dismissal hooks, the exit confirmation flyout and the context menu.
+// Tray shell UI: tray icon, the device flyout with its dismissal hooks,
+// the exit confirmation flyout and the context menu.
 #include "Aulay.h"
-#include "FlyoutMouseHook.hpp"
+#include "FlyoutInputHook.hpp"
 #include <winrt/Windows.UI.ViewManagement.h>
 #include <winrt/Windows.UI.Xaml.Media.Animation.h>
 
@@ -91,8 +91,9 @@ struct DeviceFlyoutMotion {
 	bool reopenAfterClose = false;
 };
 DeviceFlyoutMotion g_deviceFlyoutMotion;
-FlyoutMouseHook g_deviceFlyoutMouseHook;
+FlyoutInputHook g_deviceFlyoutInputHook;
 UINT g_deviceFlyoutMouseMessage = 0;
+UINT g_deviceFlyoutActivityMessage = 0;
 uint64_t g_deviceFlyoutMouseGeneration = 0;
 
 bool FlyoutAnimationsEnabled()
@@ -175,7 +176,7 @@ std::optional<Point> GetNotifyIconPosition(HWND hWnd)
 
 void DismissDeviceFlyoutFromHook()
 {
-	PostMessageW(g_hWnd, WM_DISMISSDEVICEFLYOUT, 0, 0);
+	PostMessageW(g_hWnd, WM_DISMISSDEVICEFLYOUT, g_deviceFlyoutActivityMessage, 0);
 }
 
 void HandleDeviceFlyoutMouseClick(POINT point)
@@ -190,6 +191,54 @@ void HandleDeviceFlyoutMouseClick(POINT point)
 		GetWindowThreadProcessId(target, &processId);
 		if (processId != GetCurrentProcessId())
 			DismissDeviceFlyoutFromHook();
+	}
+}
+
+bool IsFullscreenForegroundAtCursor()
+{
+	auto foreground = GetForegroundWindow();
+	if (!foreground || foreground == GetShellWindow() || !IsWindowVisible(foreground) || IsIconic(foreground))
+		return false;
+
+	DWORD foregroundProcess = 0;
+	GetWindowThreadProcessId(foreground, &foregroundProcess);
+	if (!foregroundProcess || foregroundProcess == GetCurrentProcessId())
+		return false;
+
+	POINT cursor {};
+	if (!GetCursorPos(&cursor))
+		return false;
+	DWORD cursorProcess = 0;
+	GetWindowThreadProcessId(WindowFromPoint(cursor), &cursorProcess);
+	if (cursorProcess != foregroundProcess)
+		return false;
+
+	RECT bounds {};
+	MONITORINFO monitor {};
+	monitor.cbSize = sizeof(monitor);
+	auto display = MonitorFromWindow(foreground, MONITOR_DEFAULTTONEAREST);
+	return display && GetWindowRect(foreground, &bounds) && GetMonitorInfoW(display, &monitor)
+		&& bounds.left <= monitor.rcMonitor.left && bounds.top <= monitor.rcMonitor.top
+		&& bounds.right >= monitor.rcMonitor.right && bounds.bottom >= monitor.rcMonitor.bottom;
+}
+
+void HandleDeviceFlyoutFullscreenMovement()
+{
+	if (g_app.deviceFlyoutVisible && !IsStopping() && IsFullscreenForegroundAtCursor()) {
+		RecordDiagnostic(L"ui", L"device-flyout dismiss requested: fullscreen pointer activity");
+		DismissDeviceFlyoutFromHook();
+	}
+}
+
+void HandleDeviceFlyoutKeyboardActivity(HWND foreground)
+{
+	if (!foreground || foreground != GetForegroundWindow() || !g_app.deviceFlyoutVisible || IsStopping())
+		return;
+	DWORD processId = 0;
+	GetWindowThreadProcessId(foreground, &processId);
+	if (processId && processId != GetCurrentProcessId()) {
+		RecordDiagnostic(L"ui", L"device-flyout dismiss requested: external keyboard activity");
+		DismissDeviceFlyoutFromHook();
 	}
 }
 
@@ -210,13 +259,14 @@ void CALLBACK DeviceFlyoutForegroundHook(HWINEVENTHOOK hook, DWORD event, HWND h
 
 void InstallDeviceFlyoutDismissHooks()
 {
-	if (IsStopping() || g_deviceFlyoutMouseHook.Active() || g_deviceFlyoutForegroundHook)
+	if (IsStopping() || g_deviceFlyoutInputHook.Active() || g_deviceFlyoutForegroundHook)
 		return;
-	// The mouse hook runs on its own message thread. Only click coordinates
-	// cross to the UI, where the existing tray and outside-click rules apply.
+	// The hooks run on their own message thread; no key codes or text are sent
+	// to the UI. Mouse movement is coalesced while a check is outstanding.
 	g_deviceFlyoutMouseMessage = WM_DEVICEFLYOUTMOUSE_FIRST + static_cast<UINT>(++g_deviceFlyoutMouseGeneration % WM_DEVICEFLYOUTMOUSE_COUNT);
-	if (!g_deviceFlyoutMouseHook.Start(g_hWnd, g_deviceFlyoutMouseMessage))
-		OutputDebugStringW(L"Aulay: unable to start the device flyout mouse hook.\n");
+	g_deviceFlyoutActivityMessage = WM_DEVICEFLYOUTACTIVITY_FIRST + g_deviceFlyoutMouseMessage - WM_DEVICEFLYOUTMOUSE_FIRST;
+	if (!g_deviceFlyoutInputHook.Start(g_hWnd, g_deviceFlyoutMouseMessage, g_deviceFlyoutActivityMessage))
+		OutputDebugStringW(L"Aulay: unable to start the device flyout input hooks.\n");
 	g_deviceFlyoutForegroundHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND,
 		EVENT_SYSTEM_FOREGROUND, nullptr, DeviceFlyoutForegroundHook, 0, 0, WINEVENT_OUTOFCONTEXT);
 	if (!g_deviceFlyoutForegroundHook)
@@ -225,8 +275,11 @@ void InstallDeviceFlyoutDismissHooks()
 
 void RemoveDeviceFlyoutDismissHooks()
 {
+	if (g_deviceFlyoutActivityMessage)
+		KillTimer(g_hWnd, g_deviceFlyoutActivityMessage);
 	g_deviceFlyoutMouseMessage = 0;
-	g_deviceFlyoutMouseHook.Stop();
+	g_deviceFlyoutActivityMessage = 0;
+	g_deviceFlyoutInputHook.Stop();
 	if (g_deviceFlyoutForegroundHook) {
 		if (!UnhookWinEvent(g_deviceFlyoutForegroundHook))
 			LOG_LAST_ERROR();

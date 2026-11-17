@@ -99,8 +99,9 @@ winrt::fire_and_forget RunFlyoutStyleFixture()
             if (auto control = node.try_as<FlyoutPresenter>()) { presenter = control; break; }
         }
         require(presenter && presenter.ActualHeight() > 0, L"production presenter laid out");
-        require(g_deviceFlyoutMouseHook.WaitUntilReady(2000), L"mouse hook installs on its worker");
+        require(g_deviceFlyoutInputHook.WaitUntilReady(2000), L"mouse and keyboard hooks install on their worker");
         auto firstMouseMessage = g_deviceFlyoutMouseMessage;
+        auto firstActivityMessage = g_deviceFlyoutActivityMessage;
         require(quick.ActualWidth() == DEVICE_ACTION_BUTTON_WIDTH && forced.ActualWidth() == quick.ActualWidth(), L"shared action button width");
         TextBlock labelProbe;
         labelProbe.FontFamily(quick.FontFamily());
@@ -131,8 +132,9 @@ winrt::fire_and_forget RunFlyoutStyleFixture()
         co_await winrt::resume_after(std::chrono::milliseconds(350));
         co_await winrt::resume_foreground(dispatcher);
         require(g_app.deviceFlyoutVisible, L"reopen succeeds");
-        require(g_deviceFlyoutMouseHook.WaitUntilReady(2000), L"mouse hook installs again after reopen");
+        require(g_deviceFlyoutInputHook.WaitUntilReady(2000), L"input hooks install again after reopen");
         require(g_deviceFlyoutMouseMessage != firstMouseMessage, L"reopen uses a new click generation");
+        require(g_deviceFlyoutActivityMessage != firstActivityMessage, L"reopen uses a new activity generation");
         RECT tray {};
         require(SUCCEEDED(Shell_NotifyIconGetRect(&g_niid, &tray)), L"tray rectangle available");
         auto outside = FindFlyoutClickPoint(false, tray);
@@ -144,10 +146,17 @@ winrt::fire_and_forget RunFlyoutStyleFixture()
         postClick(firstMouseMessage, *outside);
         postClick(g_deviceFlyoutMouseMessage, *inside);
         postClick(g_deviceFlyoutMouseMessage, { (tray.left + tray.right) / 2, (tray.top + tray.bottom) / 2 });
+        PostMessageW(g_hWnd, firstActivityMessage, reinterpret_cast<WPARAM>(GetForegroundWindow()), 1);
+        PostMessageW(g_hWnd, WM_DISMISSDEVICEFLYOUT, firstActivityMessage, 0);
+        PostMessageW(g_hWnd, g_deviceFlyoutActivityMessage, reinterpret_cast<WPARAM>(g_hWnd), 1);
         co_await winrt::resume_after(std::chrono::milliseconds(250));
         co_await winrt::resume_foreground(dispatcher);
-        require(g_app.deviceFlyoutVisible, L"stale, own-window and tray clicks do not dismiss");
+        require(g_app.deviceFlyoutVisible, L"stale input, own-window and tray activity do not dismiss");
         NoteRadioTransitionStarted(1000);
+        DeviceFlyoutForegroundHook(nullptr, EVENT_SYSTEM_FOREGROUND, GetShellWindow(), OBJID_WINDOW, 0, 0, 0);
+        co_await winrt::resume_after(std::chrono::milliseconds(250));
+        co_await winrt::resume_foreground(dispatcher);
+        require(g_app.deviceFlyoutVisible, L"radio transition alone does not dismiss the flyout");
         postClick(g_deviceFlyoutMouseMessage, *outside);
         co_await winrt::resume_after(std::chrono::milliseconds(450));
         co_await winrt::resume_foreground(dispatcher);

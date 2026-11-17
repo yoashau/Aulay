@@ -14,13 +14,14 @@ Requirements: Python 3, Git, and a C++17 compiler (GCC or Clang for the portable
 | --- | --- | --- |
 | `test_project_layout.py` | Portable | Source references, IDE filters, icon inventory, build paths, version metadata, resource encoding, ignore rules and CI wiring |
 | `test_regressions.py` | Portable + C++17 | Executes extracted connection-policy and queue functions; checks event integration constraints |
+| `test_flyout_dismissal.py` | Portable + C++17 | Production input callbacks and dismissal behavior during radio transitions, including fullscreen pointer and external keyboard activity |
 | `test_remote_disconnect.py` | Portable + C++17 | Remote close, duplicate/stale callbacks, reopened links, device isolation and cleanup worker selection on failed/closed sessions |
 | `test_audio_flow.py` | Portable + C++17 | Authorized startup frame recovery, first-frame/pause disarming, retry backoff and cleanup guards |
 | `test_diagnostic_overhead.py` | Portable + C++17 | 30s detail expiry, asynchronous log queue, bounded backlog and drain |
 | `test_hardening.py` | Portable | Source-level deadline, routing and settings constraints |
 | `test_debug_markers.py` | Portable + C++17 | Executes marker/disconnect functions with fake UI/connections; checks unified diagnostics and Forced request dispatch |
 | `test_debug_timeline.py` | Portable | Source-level collector and timeline constraints |
-| `run_windows_tests.cmd` | Windows, Release x64 build | Native mouse-hook lifecycle, recovery authorization/cancellation/expiry gates, event capture/fallback, deadlines, routing, settings, preparation and creation fault harnesses |
+| `run_windows_tests.cmd` | Windows, Release x64 build | Native input-hook lifecycle, recovery authorization/cancellation/expiry gates, event capture/fallback, deadlines, routing, settings, preparation and creation fault harnesses |
 | `tray_icon_test.cpp` (via `run_windows_tests.cmd`) | Windows | Production icon at 100–400% DPI, light/dark/contrast foregrounds, grayscale edges, premultiplied alpha, centering, HICON dimensions/depth, enlarged glyph stroke equality and GDI lifetime |
 | `run_debug_audio_test.cmd` | Windows, unified Release x64 build | Diagnostic snapshot formatting and collection |
 | `run_debug_monitor_test.cmd` | Windows, unified Release x64 build | Native journal, queue, rotation, retention and callback behavior |
@@ -52,7 +53,7 @@ Portable source checks are not full application builds. Native fault tests do no
 
 ## 中文说明
 
-`python tests/run_tests.py` 是统一跨平台入口，包含项目整洁性检查和七组功能/源码测试。Windows CI 构建统一的 Aulay，并执行三个非交互原生测试脚本。代码风格由 `.clang-format` 唯一约束，CI 通过 `tests/check_format.py`（固定 clang-format 19.1.5）强制执行。
+`python tests/run_tests.py` 是统一跨平台入口，包含项目整洁性检查和八组功能/源码测试。Windows CI 构建统一的 Aulay，并执行三个非交互原生测试脚本。代码风格由 `.clang-format` 唯一约束，CI 通过 `tests/check_format.py`（固定 clang-format 19.1.5）强制执行。
 
 `--probe`、`--audio` 和 UI 夹具属于显式选择的本地集成检查。UI 测试必须使用独立源码及 EXE 目录，它会写入专用配置；测试夹具不得作为产品发布。源码约束检查、原生故障模拟与真实蓝牙播放验证是不同层次的测试。
 

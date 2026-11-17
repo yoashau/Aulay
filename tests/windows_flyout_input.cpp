@@ -7,7 +7,7 @@
 #include <string>
 #include <thread>
 #include <wil/resource.h>
-#include "FlyoutMouseHook.hpp"
+#include "FlyoutInputHook.hpp"
 
 namespace {
 constexpr ULONG_PTR inputTag = 0xA17A0123;
@@ -65,10 +65,10 @@ int main(int argc, char** argv)
 	if (!target)
 		return 1;
 
-	FlyoutMouseHook hook;
+	FlyoutInputHook hook;
 	for (int i = 0; i < 20; ++i) {
-		check(hook.Start(target, WM_APP + 10), "start hook worker");
-		check(hook.WaitUntilReady(3000), "hook worker installs");
+		check(hook.Start(target, WM_APP + 10, WM_APP + 20), "start hook worker");
+		check(hook.WaitUntilReady(3000), "mouse and keyboard hooks install");
 		hook.Stop();
 		check(!hook.Active(), "stop detaches the active hook");
 	}
@@ -80,7 +80,7 @@ int main(int argc, char** argv)
 	if (argc > 1 && std::string(argv[1]) == "--input") {
 		std::thread observer(RunObserver);
 		check(WaitForSingleObject(observerReady.get(), 3000) == WAIT_OBJECT_0 && observerInstalled, "observer hook installs");
-		check(hook.Start(target, WM_APP + 11) && hook.WaitUntilReady(3000), "production hook installs after observer");
+		check(hook.Start(target, WM_APP + 11, WM_APP + 21) && hook.WaitUntilReady(3000), "production hooks install after observer");
 		std::atomic<ULONGLONG> sentAt { 0 };
 		std::atomic<UINT> sent { 0 };
 		std::thread inject([&] {
@@ -110,6 +110,6 @@ int main(int argc, char** argv)
 		observer.join();
 	}
 	DestroyWindow(target);
-	std::cout << "FLYOUT_MOUSE_HOOK checks=" << checks << " failures=" << failures << '\n';
+	std::cout << "FLYOUT_INPUT_HOOK checks=" << checks << " failures=" << failures << '\n';
 	return failures ? 1 : 0;
 }
